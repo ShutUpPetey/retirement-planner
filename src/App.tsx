@@ -512,6 +512,7 @@ function AppContent() {
                   assumptions={assumptions}
                   countryConfig={countryConfig}
                   retirement={retirement}
+                  incomeStreams={incomeStreams}
                   onAssumptionsChange={setAssumptions}
                   isDarkMode={isDarkMode}
                 />

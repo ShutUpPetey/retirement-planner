@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   LineChart,
   Line,
@@ -8,9 +9,15 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from 'recharts';
-import { Account, Profile, Assumptions, RetirementResult, FireTarget } from '../types';
+import { Account, Profile, Assumptions, RetirementResult, FireTarget, IncomeStream } from '../types';
 import type { CountryConfig } from '../countries';
-import { calculateFire, generateFireAdvice } from '../utils/fire';
+import {
+  calculateFire,
+  generateFireAdvice,
+  calculateEarlyAccess,
+  calculateSocialSecurityCoverage,
+  assessSwr,
+} from '../utils/fire';
 import { getRothVsTraditionalAdvice } from '../utils/rothVsTraditional';
 import { NumberInput } from './NumberInput';
 import { Tooltip } from './Tooltip';
@@ -21,6 +28,7 @@ interface FirePanelProps {
   assumptions: Assumptions;
   countryConfig: CountryConfig;
   retirement: RetirementResult;
+  incomeStreams: IncomeStream[];
   onAssumptionsChange: (assumptions: Assumptions) => void;
   isDarkMode?: boolean;
 }
@@ -41,12 +49,16 @@ export function FirePanel({
   assumptions,
   countryConfig,
   retirement,
+  incomeStreams,
   onAssumptionsChange,
   isDarkMode = false,
 }: FirePanelProps) {
   const fire = calculateFire(accounts, profile, assumptions);
   const advice = getRothVsTraditionalAdvice(profile, assumptions, countryConfig, retirement);
   const tips = generateFireAdvice(fire, accounts, profile, assumptions);
+  const earlyAccess = calculateEarlyAccess(accounts, profile, assumptions, countryConfig, incomeStreams);
+  const ssCoverage = calculateSocialSecurityCoverage(profile, assumptions, incomeStreams);
+  const swr = assessSwr(profile, assumptions);
 
   const fmt = (n: number) =>
     new Intl.NumberFormat(undefined, {
@@ -274,6 +286,14 @@ export function FirePanel({
         </div>
       </div>
 
+      {/* What-if scenarios */}
+      <ScenarioPanel
+        accounts={accounts}
+        profile={profile}
+        assumptions={assumptions}
+        fmt={fmt}
+      />
+
       {/* General advice */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Guidance For Your Plan</h3>
@@ -287,6 +307,133 @@ export function FirePanel({
             </li>
           ))}
         </ul>
+      </div>
+
+      {/* Early-access gap */}
+      {earlyAccess.relevant && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+            Early-Retirement Access Gap
+          </h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            You plan to retire at {earlyAccess.retirementAge}, but some accounts aren't penalty-free
+            until age {earlyAccess.penaltyFreeAge}. You'll need to bridge {earlyAccess.yearsToBridge}{' '}
+            {earlyAccess.yearsToBridge === 1 ? 'year' : 'years'} from accessible money.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+            <div className="bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
+              <div className="text-xs text-gray-500 dark:text-gray-400">Accessible at retirement</div>
+              <div className="text-xl font-semibold text-gray-900 dark:text-white">{fmt(earlyAccess.accessibleBalance)}</div>
+            </div>
+            <div className="bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
+              <div className="text-xs text-gray-500 dark:text-gray-400">Locked until {earlyAccess.penaltyFreeAge}</div>
+              <div className="text-xl font-semibold text-gray-900 dark:text-white">{fmt(earlyAccess.lockedBalance)}</div>
+            </div>
+            <div className="bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
+              <div className="text-xs text-gray-500 dark:text-gray-400">Needed to bridge the gap</div>
+              <div className="text-xl font-semibold text-gray-900 dark:text-white">{fmt(earlyAccess.bridgeNeed)}</div>
+            </div>
+          </div>
+          <div
+            className={`rounded-md p-3 text-sm ${
+              earlyAccess.shortfall > 0
+                ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300'
+                : 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300'
+            }`}
+          >
+            {earlyAccess.shortfall > 0 ? (
+              <>
+                Your accessible accounts fall about <span className="font-semibold">{fmt(earlyAccess.shortfall)}</span>{' '}
+                short of covering spending until age {earlyAccess.penaltyFreeAge}. Consider building taxable/Roth
+                savings, or a Roth conversion ladder / 72(t) to reach locked funds penalty-free.
+              </>
+            ) : (
+              <>
+                Your accessible accounts can cover spending through the gap with about{' '}
+                <span className="font-semibold">{fmt(-earlyAccess.shortfall)}</span> to spare before locked
+                accounts open at age {earlyAccess.penaltyFreeAge}.
+              </>
+            )}
+          </div>
+          {(earlyAccess.accessibleLabels.length > 0 || earlyAccess.lockedLabels.length > 0) && (
+            <div className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+              {earlyAccess.accessibleLabels.length > 0 && (
+                <div>Reachable early: {earlyAccess.accessibleLabels.join(', ')}</div>
+              )}
+              {earlyAccess.lockedLabels.length > 0 && (
+                <div>Locked until {earlyAccess.penaltyFreeAge}: {earlyAccess.lockedLabels.join(', ')}</div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Social Security coverage */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+          Social Security &amp; Benefit Coverage
+        </h3>
+        {ssCoverage.available ? (
+          <>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              {fmt(ssCoverage.annualBenefit)}/yr in benefits
+              {ssCoverage.startAge ? ` starting at age ${ssCoverage.startAge}` : ''} covers{' '}
+              <span className="font-semibold text-gray-700 dark:text-gray-200">
+                {Math.round(ssCoverage.coveragePct * 100)}%
+              </span>{' '}
+              of your {fmt(ssCoverage.spending)} spending goal.
+            </p>
+            <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-3 mb-4 overflow-hidden">
+              <div
+                className="bg-emerald-500 h-3 rounded-full"
+                style={{ width: `${Math.min(100, Math.round(ssCoverage.coveragePct * 100))}%` }}
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
+                <div className="text-xs text-gray-500 dark:text-gray-400">Remaining annual draw from portfolio</div>
+                <div className="text-xl font-semibold text-gray-900 dark:text-white">{fmt(ssCoverage.residualDraw)}</div>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
+                <div className="text-xs text-gray-500 dark:text-gray-400">Portfolio needed once benefits start</div>
+                <div className="text-xl font-semibold text-gray-900 dark:text-white">{fmt(ssCoverage.residualPortfolio)}</div>
+              </div>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-4">
+              Benefits reduce how much your portfolio must cover from their start age. For an accurate
+              figure, use your personalized estimate at ssa.gov rather than a placeholder.
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            No Social Security or government benefit is modeled yet. Add one as an income stream (tagged
+            Social Security) to see how much of your spending it covers and how much your portfolio still
+            needs to fund. Your personalized estimate is at ssa.gov.
+          </p>
+        )}
+      </div>
+
+      {/* SWR sustainability */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Withdrawal-Rate Check</h3>
+          <span
+            className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+              swr.flagged
+                ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                : 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
+            }`}
+          >
+            {pct(swr.swr)} · {swr.level.replace('_', ' ')}
+          </span>
+        </div>
+        <p className="text-sm text-gray-700 dark:text-gray-300">{swr.message}</p>
+        {swr.flagged && (
+          <p className="text-sm text-amber-700 dark:text-amber-300 mt-2">
+            For a {swr.retirementLengthYears}-year retirement, a ceiling around {pct(swr.recommendedMax)}{' '}
+            leaves more margin against a bad early sequence of returns.
+          </p>
+        )}
       </div>
 
       {/* Roth vs Traditional advice */}
@@ -408,6 +555,159 @@ function FireCard({
       {achieved && target.achieveAge !== null && target.achieveAge < currentAge + 1 && (
         <div className="text-xs text-green-700 dark:text-green-400 mt-1">You're already there.</div>
       )}
+    </div>
+  );
+}
+
+function ScenarioPanel({
+  accounts,
+  profile,
+  assumptions,
+  fmt,
+}: {
+  accounts: Account[];
+  profile: Profile;
+  assumptions: Assumptions;
+  fmt: (n: number) => string;
+}) {
+  const [retireAge, setRetireAge] = useState(profile.retirementAge);
+  const [extraMonthly, setExtraMonthly] = useState(0);
+  const [barista, setBarista] = useState(assumptions.baristaAnnualIncome ?? 0);
+
+  const scenarioAccounts: Account[] =
+    extraMonthly > 0
+      ? [
+          ...accounts,
+          {
+            id: '__scenario_extra__',
+            name: 'Extra savings (scenario)',
+            type: 'taxable',
+            balance: 0,
+            annualContribution: extraMonthly * 12,
+            contributionGrowthRate: 0,
+            returnRate: 0,
+          },
+        ]
+      : accounts;
+
+  const scenarioProfile: Profile = { ...profile, retirementAge: retireAge };
+  const scenarioAssumptions: Assumptions = { ...assumptions, baristaAnnualIncome: barista };
+
+  const result = calculateFire(scenarioAccounts, scenarioProfile, scenarioAssumptions);
+  const baseline = calculateFire(accounts, profile, assumptions);
+
+  const ageText = (n: number | null) => (n === null ? 'after 100' : `age ${n}`);
+  const delta = (scen: number | null, base: number | null) => {
+    if (scen === null || base === null) return null;
+    return scen - base;
+  };
+
+  const rows: { id: string; label: string }[] = [
+    { id: 'full', label: 'Full FIRE' },
+    { id: 'lean', label: 'Lean FIRE' },
+    { id: 'barista', label: 'Barista FIRE' },
+  ];
+
+  const sliderClass =
+    'w-full accent-blue-600 cursor-pointer';
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">What-If Scenarios</h3>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+        Drag the sliders to test changes. These don't alter your saved plan — they only preview the effect
+        on when you'd reach each FIRE milestone (today's dollars).
+      </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
+        <div>
+          <div className="flex justify-between text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <span>Retire at age</span>
+            <span className="text-blue-600 dark:text-blue-400">{retireAge}</span>
+          </div>
+          <input
+            type="range"
+            min={profile.currentAge + 1}
+            max={Math.max(75, profile.retirementAge + 5)}
+            value={retireAge}
+            onChange={(e) => setRetireAge(Number(e.target.value))}
+            className={sliderClass}
+          />
+        </div>
+        <div>
+          <div className="flex justify-between text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <span>Save extra / month</span>
+            <span className="text-blue-600 dark:text-blue-400">{fmt(extraMonthly)}</span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={5000}
+            step={50}
+            value={extraMonthly}
+            onChange={(e) => setExtraMonthly(Number(e.target.value))}
+            className={sliderClass}
+          />
+        </div>
+        <div>
+          <div className="flex justify-between text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <span>Barista income / yr</span>
+            <span className="text-blue-600 dark:text-blue-400">{fmt(barista)}</span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={80000}
+            step={1000}
+            value={barista}
+            onChange={(e) => setBarista(Number(e.target.value))}
+            className={sliderClass}
+          />
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-md border border-gray-200 dark:border-gray-700">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 dark:bg-gray-700/40 text-gray-500 dark:text-gray-400">
+            <tr>
+              <th className="text-left font-medium px-3 py-2">Milestone</th>
+              <th className="text-right font-medium px-3 py-2">Target</th>
+              <th className="text-right font-medium px-3 py-2">Reached</th>
+              <th className="text-right font-medium px-3 py-2">vs now</th>
+            </tr>
+          </thead>
+          <tbody className="text-gray-700 dark:text-gray-200">
+            {rows.map((r) => {
+              const t = result.targets.find((x) => x.id === r.id)!;
+              const b = baseline.targets.find((x) => x.id === r.id)!;
+              const d = delta(t.achieveAge, b.achieveAge);
+              return (
+                <tr key={r.id} className="border-t border-gray-100 dark:border-gray-700/60">
+                  <td className="px-3 py-2">{r.label}</td>
+                  <td className="px-3 py-2 text-right">{fmt(t.targetNumber)}</td>
+                  <td className="px-3 py-2 text-right">
+                    {t.achieved ? 'already there' : ageText(t.achieveAge)}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    {d === null || d === 0 ? (
+                      <span className="text-gray-400">—</span>
+                    ) : d < 0 ? (
+                      <span className="text-green-600 dark:text-green-400">{d} yrs earlier</span>
+                    ) : (
+                      <span className="text-amber-600 dark:text-amber-400">+{d} yrs later</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">
+        "vs now" compares the reach age against your current saved plan. Retiring earlier shortens the
+        years you contribute, so some milestones may move later.
+      </p>
     </div>
   );
 }

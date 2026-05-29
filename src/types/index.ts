@@ -118,6 +118,42 @@ export interface FireResult {
   projection: FireProjectionPoint[];
 }
 
+// ---- Advisor analyses (early access, Social Security, SWR) ----
+
+export interface EarlyAccessAnalysis {
+  relevant: boolean;            // only when retiring before the penalty-free age
+  penaltyFreeAge: number;       // age locked accounts open without penalty (e.g. 60 US)
+  retirementAge: number;
+  yearsToBridge: number;        // penaltyFreeAge - retirementAge
+  accessibleBalance: number;    // balances reachable at retirement without penalty
+  lockedBalance: number;        // balances locked until penaltyFreeAge
+  bridgeNeed: number;           // spending (net of income streams) across the gap years
+  shortfall: number;            // bridgeNeed - accessibleBalance (positive = cash-constrained)
+  accessibleLabels: string[];   // account-type labels that are reachable early
+  lockedLabels: string[];       // account-type labels that are locked
+}
+
+export interface SocialSecurityCoverage {
+  available: boolean;           // false if no SS/benefit income is modeled
+  annualBenefit: number;        // total annual SS/government benefit, today's dollars
+  startAge: number | null;      // age the (full) benefit begins
+  spending: number;             // annual spending goal, today's dollars
+  coveragePct: number;          // annualBenefit / spending
+  residualDraw: number;         // spending - annualBenefit (>= 0)
+  residualPortfolio: number;    // residualDraw / SWR (portfolio needed once SS is on)
+}
+
+export type SwrLevel = 'conservative' | 'moderate' | 'aggressive' | 'very_aggressive';
+
+export interface SwrAssessment {
+  swr: number;                  // the user's chosen rate (decimal)
+  level: SwrLevel;
+  retirementLengthYears: number;
+  recommendedMax: number;       // suggested ceiling given retirement length (decimal)
+  flagged: boolean;             // swr exceeds recommendedMax
+  message: string;
+}
+
 // ---- Roth vs Traditional advice ----
 
 export interface RothAdvice {
@@ -276,10 +312,12 @@ export function getIncomeTaxTreatmentLabel(treatment: IncomeTaxTreatment): strin
     case 'social_security':
       return 'Social Security';
     case 'fully_taxable':
-      return 'Pension / Annuity';
+      return 'Fully Taxable';
     case 'other_income':
       return 'Other Income';
     case 'tax_free':
       return 'Tax-Free';
+    default:
+      return treatment;
   }
 }

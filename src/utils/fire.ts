@@ -5,9 +5,16 @@ import {
   FireResult,
   FireTarget,
   FireProjectionPoint,
+  IncomeStream,
+  EarlyAccessAnalysis,
+  SocialSecurityCoverage,
+  SwrAssessment,
+  SwrLevel,
   is401k,
   getTaxTreatment,
+  getAccountTypeLabel,
 } from '../types';
+import type { CountryConfig } from '../countries';
 import {
   LEAN_FIRE_MULTIPLIER,
   FAT_FIRE_MULTIPLIER,
@@ -266,4 +273,167 @@ export function generateFireAdvice(
   );
 
   return tips;
+}
+
+
+/**
+ * Early-access gap: when someone retires before the penalty-free age (59.5 -> 60 in
+ * the US), tax-advantaged accounts may be locked behind a 10% penalty. This works out
+ * which balances are reachable at retirement, which are locked, and whether the
+ * reachable money plus any income streams can bridge spending until the lock lifts.
+ *
+ * Modeling notes (consistent with the rest of the app): Roth, taxable and HSA are
+ * treated as reachable without penalty; only accounts the country flags as
+ * penalty-bearing (US traditional 401k/IRA) are considered locked. Roth contributions
+ * vs earnings aren't tracked, so Roth is treated as fully reachable.
+ */
+export function calculateEarlyAccess(
+  accounts: Account[],
+  profile: Profile,
+  assumptions: Assumptions,
+  countryConfig: CountryConfig,
+  incomeStreams: IncomeStream[] = []
+): EarlyAccessAnalysis {
+  const retirementAge = profile.retirementAge;
+
+  // Highest penalty-free age across the penalty-bearing account types present.
+  let penaltyFreeAge = 0;
+  for (const a of accounts) {
+    const info = countryConfig.getPenaltyInfo(a.type);
+    if (info.appliesToAccountType) {
+      penaltyFreeAge = Math.max(penaltyFreeAge, Math.ceil(info.penaltyAge));
+    }
+  }
+
+  const accountReachableAge = (a: Account): number => {
+    const info = countryConfig.getPenaltyInfo(a.type);
+    return info.appliesToAccountType ? Math.ceil(info.penaltyAge) : 0;
+  };
+
+  let accessibleBalance = 0;
+  let lockedBalance = 0;
+  const accessibleLabels = new Set<string>();
+  const lockedLabels = new Set<string>();
+  for (const a of accounts) {
+    if (accountReachableAge(a) <= retirementAge) {
+      accessibleBalance += a.balance;
+      if (a.balance > 0) accessibleLabels.add(getAccountTypeLabel(a.type));
+    } else {
+      lockedBalance += a.balance;
+      if (a.balance > 0) lockedLabels.add(getAccountTypeLabel(a.type));
+    }
+  }
+
+  const relevant = penaltyFreeAge > retirementAge && lockedBalance > 0;
+  const yearsToBridge = Math.max(0, penaltyFreeAge - retirementAge);
+
+  // Spending to cover during the gap, net of income streams active in those years.
+  const spending = assumptions.annualSpendingGoal ?? SPENDING_GOAL_FALLBACK;
+  let bridgeNeed = 0;
+  for (let age = retirementAge; age < penaltyFreeAge; age++) {
+    const income = incomeStreams.reduce((sum, str) => {
+      const on = age >= str.startAge && (str.endAge == null || age <= str.endAge);
+      return on ? sum + str.monthlyAmount * 12 : sum;
+    }, 0);
+    bridgeNeed += Math.max(0, spending - income);
+  }
+
+  return {
+    relevant,
+    penaltyFreeAge,
+    retirementAge,
+    yearsToBridge,
+    accessibleBalance,
+    lockedBalance,
+    bridgeNeed,
+    shortfall: bridgeNeed - accessibleBalance,
+    accessibleLabels: Array.from(accessibleLabels),
+    lockedLabels: Array.from(lockedLabels),
+  };
+}
+
+/**
+ * Social Security / government-benefit coverage of spending, in today's dollars.
+ * US benefits come from income streams tagged `social_security`; Canada uses the
+ * profile's CPP/OAS fields. The "start age" is the latest start among contributing
+ * benefits, i.e. when the full benefit is flowing.
+ */
+export function calculateSocialSecurityCoverage(
+  profile: Profile,
+  assumptions: Assumptions,
+  incomeStreams: IncomeStream[] = []
+): SocialSecurityCoverage {
+  const spending = assumptions.annualSpendingGoal ?? SPENDING_GOAL_FALLBACK;
+  const swr = assumptions.safeWithdrawalRate > 0 ? assumptions.safeWithdrawalRate : 0.04;
+
+  let annualBenefit = 0;
+  let startAge: number | null = null;
+
+  if (profile.country === 'CA') {
+    if (profile.socialSecurityBenefit && profile.socialSecurityBenefit > 0) {
+      annualBenefit += profile.socialSecurityBenefit;
+      startAge = profile.socialSecurityStartAge ?? 65;
+    }
+    if (profile.secondaryBenefitAmount && profile.secondaryBenefitAmount > 0) {
+      annualBenefit += profile.secondaryBenefitAmount;
+      startAge = Math.max(startAge ?? 0, profile.secondaryBenefitStartAge ?? 65) || startAge;
+    }
+  } else {
+    const ss = incomeStreams.filter(s => s.taxTreatment === 'social_security');
+    for (const s of ss) {
+      annualBenefit += s.monthlyAmount * 12;
+      startAge = Math.max(startAge ?? 0, s.startAge);
+    }
+  }
+
+  const available = annualBenefit > 0;
+  const residualDraw = Math.max(0, spending - annualBenefit);
+
+  return {
+    available,
+    annualBenefit,
+    startAge: available ? startAge : null,
+    spending,
+    coveragePct: spending > 0 ? annualBenefit / spending : 0,
+    residualDraw,
+    residualPortfolio: residualDraw / swr,
+  };
+}
+
+/**
+ * Judge the chosen safe withdrawal rate against the planned retirement length.
+ * Longer (early) retirements warrant a lower rate; 4% is a 30-year heuristic.
+ */
+export function assessSwr(
+  profile: Profile,
+  assumptions: Assumptions
+): SwrAssessment {
+  const swr = assumptions.safeWithdrawalRate > 0 ? assumptions.safeWithdrawalRate : 0.04;
+  const retirementLengthYears = Math.max(0, profile.lifeExpectancy - profile.retirementAge);
+  const longRetirement = retirementLengthYears >= 30;
+  const recommendedMax = longRetirement ? 0.035 : 0.04;
+
+  let level: SwrLevel;
+  if (swr <= 0.035) level = 'conservative';
+  else if (swr <= 0.04) level = 'moderate';
+  else if (swr <= 0.045) level = 'aggressive';
+  else level = 'very_aggressive';
+
+  const flagged = swr > recommendedMax;
+  const pct = (r: number) => `${(r * 100).toFixed(1)}%`;
+
+  let message: string;
+  if (level === 'conservative') {
+    message = `A ${pct(swr)} withdrawal rate is conservative and well-suited to a ${retirementLengthYears}-year retirement — it trades some spending today for a high chance of never running out.`;
+  } else if (level === 'moderate') {
+    message = longRetirement
+      ? `${pct(swr)} is the classic 4% heuristic, which was calibrated to ~30 years. Your plan spans ${retirementLengthYears} years, so leaning toward 3–3.5% adds a safety margin.`
+      : `${pct(swr)} is in line with the classic 4% rule for a ${retirementLengthYears}-year retirement. Reasonable, with normal market risk.`;
+  } else if (level === 'aggressive') {
+    message = `${pct(swr)} is above the 4% guideline. Over a ${retirementLengthYears}-year retirement this raises the odds of depleting the portfolio in a poor sequence of returns — consider 3.5–4% or plan to flex spending in down years.`;
+  } else {
+    message = `${pct(swr)} is an aggressive withdrawal rate. Historically, rates this high have a meaningful failure risk over long retirements — treat it as a stretch case and have a plan to cut spending if markets disappoint.`;
+  }
+
+  return { swr, level, retirementLengthYears, recommendedMax, flagged, message };
 }
