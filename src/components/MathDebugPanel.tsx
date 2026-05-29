@@ -227,21 +227,39 @@ export function MathDebugPanel({
           {/* ── Accumulation content ── */}
           {isAccum && accumSnap && (
             <>
-              {/* Out-of-pocket callout for this year */}
+              {/* Out-of-pocket breakdown for this year */}
               {(() => {
                 const yr = accumulation.yearlyBalances.find(y => y.age === selectedAge);
-                const oop = yr?.netLifeEventCost ?? 0;
-                if (oop === 0) return null;
+                if (!yr) return null;
+                const grossNet = yr.netLifeEventCost + yr.contributionReductionFromEvents; // gross expense − income
+                const reduction = yr.contributionReductionFromEvents;
+                const oop = yr.netLifeEventCost;
+                if (grossNet === 0 && reduction === 0) return null;
                 return (
-                  <div className={`rounded-md px-3 py-2 text-sm font-medium ${
-                    oop > 0
-                      ? 'bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 text-orange-800 dark:text-orange-300'
-                      : 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 text-green-800 dark:text-green-300'
-                  }`}>
-                    {oop > 0
-                      ? `💸 Out-of-pocket from life events this year: ${fmt(oop)} (comes from income/savings, not retirement accounts)`
-                      : `💰 Life event income this year: +${fmt(-oop)} (reduces money needed from portfolio)`}
-                  </div>
+                  <Card>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">💸 Life Event Cash Flow This Year</p>
+                    {grossNet > 0 && (
+                      <Row label="Gross life event expense" result={fmt(grossNet)} />
+                    )}
+                    {grossNet < 0 && (
+                      <Row label="Life event income" result={`+${fmt(-grossNet)}`} />
+                    )}
+                    {reduction > 0 && (
+                      <Row
+                        label="− Covered by reduced contributions"
+                        result={`(${fmt(reduction)})`}
+                        note="Retirement savings redirected toward the expense — already reflected in the contribution columns above"
+                      />
+                    )}
+                    <Divider />
+                    <Row
+                      label={oop > 0 ? 'True out-of-pocket (from income)' : 'Net income benefit'}
+                      result={oop > 0 ? fmt(oop) : `+${fmt(-oop)}`}
+                      note={oop > 0
+                        ? 'Extra cash needed from salary/savings beyond normal retirement contributions'
+                        : 'Life event income more than covers any expenses this year'}
+                    />
+                  </Card>
                 );
               })()}
 
@@ -327,11 +345,13 @@ export function MathDebugPanel({
                       ))}
                       {oop !== 0 && (
                         <Card>
-                          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">💸 Out-of-Pocket This Year</p>
+                          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">💸 True Out-of-Pocket</p>
                           <Row
-                            label={oop > 0 ? 'Life event expenses' : 'Life event income'}
+                            label={oop > 0 ? 'Extra cash from income/savings' : 'Net income benefit'}
                             result={oop > 0 ? fmt(oop) : `+${fmt(-oop)}`}
-                            note="Paid from income / savings — separate from retirement account contributions"
+                            note={yr && yr.contributionReductionFromEvents > 0
+                              ? `${fmt(yr.contributionReductionFromEvents)} of the expense was covered by reduced contributions (shown above)`
+                              : 'All paid from income/savings; retirement contributions unchanged'}
                           />
                         </Card>
                       )}

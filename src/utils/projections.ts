@@ -120,21 +120,6 @@ export function calculateAccumulation(
   const emptyContribs: Record<string, number> = {};
   accounts.forEach(a => { emptyContribs[a.id] = 0; });
 
-  // Helper: net out-of-pocket cost from recurring life events at a given age
-  const computeNetLifeEventCost = (age: number): number => {
-    let net = 0;
-    for (const event of lifeEvents) {
-      if (event.type === 'lump_sum') continue; // lump sums hit portfolio balance, not take-home pay
-      const active = age >= event.startAge && (event.endAge === undefined || age <= event.endAge);
-      if (!active) continue;
-      const amount = event.inflationAdjust
-        ? event.amount * Math.pow(1 + inflationRate, age - profile.currentAge)
-        : event.amount;
-      net += event.type === 'expense' ? amount : -amount;
-    }
-    return net;
-  };
-
   yearlyBalances.push({
     age: profile.currentAge,
     year: currentYear,
@@ -142,7 +127,9 @@ export function calculateAccumulation(
     totalBalance: Object.values(balances).reduce((sum, b) => sum + b, 0),
     contributions: { ...emptyContribs },
     employerContributions: { ...emptyContribs },
-    netLifeEventCost: computeNetLifeEventCost(profile.currentAge),
+    // Year 0 is the starting-balance snapshot — no contributions flow, so no reduction.
+    netLifeEventCost: 0,
+    contributionReductionFromEvents: 0,
   });
 
   // Project each year
@@ -150,25 +137,25 @@ export function calculateAccumulation(
     const age = profile.currentAge + i;
     const year = currentYear + i;
 
-    // Split life event deltas into two buckets:
-    //  deltaAll          — events marked affectsIrsMaxAccounts:true (e.g. sabbatical)
-    //  deltaDiscretionary — all other events (default; only reduces discretionary contributions)
-    // This lets users model events like sabbaticals that pause payroll deductions while
-    // keeping typical expenses (vacation, tuition) from touching automatic 401k deductions.
+    // Process life events: track gross expense/income for OOP calculation,
+    // and split into deltaAll / deltaDiscretionary for contribution adjustment.
+    let grossEventExpense = 0;
+    let grossEventIncome = 0;
     let deltaAll = 0;
     let deltaDiscretionary = 0;
     for (const event of lifeEvents) {
       if (event.type === 'lump_sum') continue;
       const active = age >= event.startAge && (event.endAge === undefined || age <= event.endAge);
       if (!active) continue;
-      const effectiveAmount = event.inflationAdjust
+      const amount = event.inflationAdjust
         ? event.amount * Math.pow(1 + inflationRate, age - profile.currentAge)
         : event.amount;
-      const signed = event.type === 'expense' ? -effectiveAmount : effectiveAmount;
-      if (event.affectsIrsMaxAccounts) {
-        deltaAll += signed;
+      if (event.type === 'expense') {
+        grossEventExpense += amount;
+        if (event.affectsIrsMaxAccounts) deltaAll -= amount; else deltaDiscretionary -= amount;
       } else {
-        deltaDiscretionary += signed;
+        grossEventIncome += amount;
+        if (event.affectsIrsMaxAccounts) deltaAll += amount; else deltaDiscretionary += amount;
       }
     }
 
@@ -187,6 +174,7 @@ export function calculateAccumulation(
     // Track what was actually used this year (for accurate table display)
     const yearActualContribs: Record<string, number> = {};
     const yearEmployerContribs: Record<string, number> = {};
+    let totalContribReduction = 0; // sum of contribution reductions caused by life events this year
 
     accounts.forEach(account => {
       const currentBalance = balances[account.id];
@@ -227,6 +215,10 @@ export function calculateAccumulation(
         adjustedContribution = Math.max(floor, raw);
       }
 
+      // How much did life events reduce this account's contribution?
+      const baseContrib = irsMax ?? currentContribution;
+      totalContribReduction += Math.max(0, baseContrib - adjustedContribution);
+
       const employerMatch = calculateEmployerMatch(account, adjustedContribution, salaryGrowthFactor);
       const totalContribution = adjustedContribution + employerMatch;
 
@@ -259,6 +251,9 @@ export function calculateAccumulation(
 
     const totalBalance = Object.values(balances).reduce((sum, b) => sum + b, 0);
 
+    // True out-of-pocket = what expenses couldn't be covered by redirecting retirement savings
+    const netLifeEventCost = (grossEventExpense - grossEventIncome) - totalContribReduction;
+
     yearlyBalances.push({
       age,
       year,
@@ -266,7 +261,8 @@ export function calculateAccumulation(
       totalBalance,
       contributions: { ...yearActualContribs },
       employerContributions: { ...yearEmployerContribs },
-      netLifeEventCost: computeNetLifeEventCost(age),
+      netLifeEventCost,
+      contributionReductionFromEvents: totalContribReduction,
     });
   }
 
