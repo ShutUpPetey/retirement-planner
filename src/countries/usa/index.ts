@@ -140,11 +140,11 @@ export const USConfig: CountryConfig = {
   }),
 
   getContributionLimits: (): ContributionLimits => ({
-    traditional_401k: 23000, // 2024 limit
-    roth_401k: 23000,
-    traditional_ira: 7000,
-    roth_ira: 7000,
-    hsa: 4150, // Individual coverage
+    traditional_401k: 24500, // 2026 limit (IRS Notice 25-67)
+    roth_401k: 24500,
+    traditional_ira: 7500,
+    roth_ira: 7500,
+    hsa: 4400, // 2026 individual coverage limit
   }),
 
   getWithdrawalOrder: () => USA_WITHDRAWAL_ORDER,

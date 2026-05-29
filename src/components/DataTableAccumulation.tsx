@@ -23,13 +23,15 @@ export function DataTableAccumulation({ accounts, result }: DataTableAccumulatio
 
   if (!result.yearlyBalances.length) return null;
 
-  // Calculate employer match for each account/year
+  // Calculate employer match — mirrors projections.ts logic
   const getEmployerMatch = (account: Account, contribution: number): number => {
-    if (!is401k(account.type) || !account.employerMatchPercent || !account.employerMatchLimit) {
-      return 0;
+    if ((!is401k(account.type) && account.type !== 'employer_rrsp') || !account.employerMatchPercent) return 0;
+    if (account.employerMatchLimitType === 'salary_percent') {
+      if (!account.annualSalary || !account.employerMatchLimitPercent) return 0;
+      return Math.min(contribution, account.annualSalary * account.employerMatchLimitPercent) * account.employerMatchPercent;
     }
-    const matchAmount = contribution * account.employerMatchPercent;
-    return Math.min(matchAmount, account.employerMatchLimit);
+    if (!account.employerMatchLimit) return 0;
+    return Math.min(contribution * account.employerMatchPercent, account.employerMatchLimit);
   };
 
   // Get color class based on tax treatment

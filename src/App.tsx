@@ -35,6 +35,7 @@ import { OnboardingWizard } from "./components/OnboardingWizard";
 import { ChartPlan } from "./components/ChartPlan";
 import { ChartTimeline } from "./components/ChartTimeline";
 import { ScenarioComparison } from "./components/ScenarioComparison";
+import { MathDebugPanel } from "./components/MathDebugPanel";
 import { deriveMilestones } from "./utils/milestones";
 import { calculateFire, calculateEarlyAccess } from "./utils/fire";
 import { useScenarios } from "./hooks/useScenarios";
@@ -759,6 +760,16 @@ function AppContent() {
                       isDarkMode={isDarkMode}
                     />
                   </div>
+
+                  <MathDebugPanel
+                    accounts={accounts}
+                    profile={profile}
+                    assumptions={assumptions}
+                    incomeStreams={incomeStreams}
+                    accumulation={accumulation}
+                    retirement={retirement}
+                    countryConfig={countryConfig}
+                  />
                 </div>
               )}
 
