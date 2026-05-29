@@ -99,7 +99,7 @@ Very low. Well-contained change. Produces a small reduction in projected future 
 ---
 
 ### 5. Save & compare named scenarios · Effort: M · UX & sharing
-- [ ] **Done**
+- [x] **Done**
 
 **What it does**
 Save the current state as a named scenario ("Retire at 55", "Coast to 60"), then view a side-by-side comparison table of key metrics: portfolio at retirement, depletion age, lifetime taxes, monthly sustainable withdrawal.

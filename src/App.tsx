@@ -34,8 +34,10 @@ import { DataTableWithdrawal } from "./components/DataTableWithdrawal";
 import { OnboardingWizard } from "./components/OnboardingWizard";
 import { ChartPlan } from "./components/ChartPlan";
 import { ChartTimeline } from "./components/ChartTimeline";
+import { ScenarioComparison } from "./components/ScenarioComparison";
 import { deriveMilestones } from "./utils/milestones";
 import { calculateFire, calculateEarlyAccess } from "./utils/fire";
+import { useScenarios } from "./hooks/useScenarios";
 import { v4 as uuidv4 } from "uuid";
 
 // Default accounts for US
@@ -122,7 +124,8 @@ type TabType =
   | "retirement"
   | "fire"
   | "summary"
-  | "methodology";
+  | "methodology"
+  | "scenarios";
 
 // Inner app component that uses the country context
 function AppContent() {
@@ -186,12 +189,17 @@ function AppContent() {
   );
   const [showOnboarding, setShowOnboarding] = useState(isFirstVisit);
 
+  // Scenarios
+  const { scenarios, saveScenario, deleteScenario } = useScenarios();
+
   // UI state (not persisted)
   const [activeTab, setActiveTab] = useState<TabType>("summary");
   const [expandedSection, setExpandedSection] = useState<string | null>(
     "accounts",
   );
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showSaveScenario, setShowSaveScenario] = useState(false);
+  const [scenarioName, setScenarioName] = useState("");
 
   const { accumulation, retirement } = useRetirementCalc(
     accounts,
@@ -340,8 +348,32 @@ function AppContent() {
     { id: "accumulation", label: "Accumulation Phase" },
     { id: "retirement", label: "Retirement Phase" },
     { id: "fire", label: "FIRE & Advice" },
+    { id: "scenarios", label: `Scenarios${scenarios.length > 0 ? ` (${scenarios.length})` : ""}` },
     { id: "methodology", label: "Methodology" },
   ];
+
+  const handleRestoreScenario = (state: typeof scenarios[0]["state"]) => {
+    if (!window.confirm("Restore this scenario? Your current inputs will be replaced.")) return;
+    setAccounts(state.accounts);
+    setProfile(state.profile);
+    setAssumptions(state.assumptions);
+    setIncomeStreams(state.incomeStreams);
+    setLifeEvents(state.lifeEvents);
+    setActiveTab("summary");
+  };
+
+  const handleSaveScenario = () => {
+    saveScenario(scenarioName, {
+      accounts,
+      profile,
+      assumptions,
+      incomeStreams,
+      lifeEvents,
+    });
+    setShowSaveScenario(false);
+    setScenarioName("");
+    setActiveTab("scenarios");
+  };
 
   const handleOnboardingComplete = useCallback(
     (
@@ -617,23 +649,69 @@ function AppContent() {
             </div>
           ) : (
             <>
-              {/* Tab Navigation */}
+              {/* Tab Navigation + Save Scenario */}
               <div className="border-b border-gray-200 dark:border-gray-700">
-                <nav className="flex space-x-8 overflow-x-auto scrollbar-hide">
-                  {tabs.map((tab) => (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
-                        activeTab === tab.id
-                          ? "border-blue-500 text-blue-600 dark:text-blue-400"
-                          : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </nav>
+                <div className="flex items-end justify-between gap-4">
+                  <nav className="flex space-x-8 overflow-x-auto scrollbar-hide">
+                    {tabs.map((tab) => (
+                      <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
+                          activeTab === tab.id
+                            ? "border-blue-500 text-blue-600 dark:text-blue-400"
+                            : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </nav>
+
+                  {/* Save Scenario */}
+                  <div className="flex-shrink-0 pb-2">
+                    {showSaveScenario ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          autoFocus
+                          type="text"
+                          value={scenarioName}
+                          onChange={(e) => setScenarioName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleSaveScenario();
+                            if (e.key === "Escape") { setShowSaveScenario(false); setScenarioName(""); }
+                          }}
+                          placeholder="Scenario name…"
+                          className="w-44 px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <button
+                          onClick={handleSaveScenario}
+                          className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => { setShowSaveScenario(false); setScenarioName(""); }}
+                          className="px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setShowSaveScenario(true); setScenarioName(""); }}
+                        disabled={scenarios.length >= 6}
+                        title={scenarios.length >= 6 ? "Maximum 6 scenarios saved" : "Save current plan as a named scenario"}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                        </svg>
+                        Save Scenario
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* Summary Tab */}
@@ -771,6 +849,36 @@ function AppContent() {
                   onAssumptionsChange={setAssumptions}
                   isDarkMode={isDarkMode}
                 />
+              )}
+
+              {/* Scenarios Tab */}
+              {activeTab === "scenarios" && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Saved Scenarios</h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                        Compare up to 6 saved plans side-by-side
+                      </p>
+                    </div>
+                    {scenarios.length < 6 && (
+                      <button
+                        onClick={() => { setShowSaveScenario(true); setScenarioName(""); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                        </svg>
+                        Save Current Plan
+                      </button>
+                    )}
+                  </div>
+                  <ScenarioComparison
+                    scenarios={scenarios}
+                    onDelete={deleteScenario}
+                    onRestore={handleRestoreScenario}
+                  />
+                </div>
               )}
 
               {/* Methodology Tab */}

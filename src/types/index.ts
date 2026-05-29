@@ -247,6 +247,23 @@ export interface AppState {
   lifeEvents: LifeEvent[];
 }
 
+// ---- Saved scenarios ----
+
+export interface ScenarioState {
+  accounts: Account[];
+  profile: Profile;
+  assumptions: Assumptions;
+  incomeStreams: IncomeStream[];
+  lifeEvents: LifeEvent[];
+}
+
+export interface SavedScenario {
+  id: string;
+  name: string;
+  savedAt: number; // unix timestamp ms
+  state: ScenarioState;
+}
+
 // Tax bracket structure
 export interface TaxBracket {
   min: number;
