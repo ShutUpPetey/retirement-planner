@@ -1,15 +1,23 @@
-import { Assumptions } from '../types';
-import { NumberInput } from './NumberInput';
-import { Tooltip } from './Tooltip';
+import { Assumptions } from "../types";
+import { NumberInput } from "./NumberInput";
+import { Tooltip } from "./Tooltip";
+import {
+  ASSUMPTION_PRESETS,
+  getActivePreset,
+} from "../utils/assumptionPresets";
 
 interface AssumptionsFormProps {
   assumptions: Assumptions;
   onChange: (assumptions: Assumptions) => void;
 }
 
-const inputClassName = "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white";
+const inputClassName =
+  "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white";
 
-export function AssumptionsForm({ assumptions, onChange }: AssumptionsFormProps) {
+export function AssumptionsForm({
+  assumptions,
+  onChange,
+}: AssumptionsFormProps) {
   const handleChange = (field: keyof Assumptions, value: number) => {
     onChange({
       ...assumptions,
@@ -17,9 +25,38 @@ export function AssumptionsForm({ assumptions, onChange }: AssumptionsFormProps)
     });
   };
 
+  const activePreset = getActivePreset(assumptions);
+  const activePresetObj = ASSUMPTION_PRESETS.find((p) => p.id === activePreset);
+
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-600 pb-2">Economic Assumptions</h3>
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-600 pb-2">
+        Economic Assumptions
+      </h3>
+
+      {/* Preset strip */}
+      <div>
+        <div className="flex gap-2">
+          {ASSUMPTION_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() => onChange({ ...assumptions, ...preset.values })}
+              className={
+                "flex-1 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors " +
+                (activePreset === preset.id
+                  ? "bg-blue-600 border-blue-600 text-white"
+                  : "bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-blue-400 dark:hover:border-blue-500")
+              }
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+          {activePresetObj ? activePresetObj.description : "Custom"}
+        </p>
+      </div>
 
       <div className="space-y-4">
         <div>
@@ -29,7 +66,7 @@ export function AssumptionsForm({ assumptions, onChange }: AssumptionsFormProps)
           </label>
           <NumberInput
             value={assumptions.inflationRate}
-            onChange={(val) => handleChange('inflationRate', val)}
+            onChange={(val) => handleChange("inflationRate", val)}
             min={0}
             max={10}
             isPercentage
@@ -37,7 +74,9 @@ export function AssumptionsForm({ assumptions, onChange }: AssumptionsFormProps)
             defaultValue={0.03}
             className={inputClassName}
           />
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Historical average: ~3%</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Historical average: ~3%
+          </p>
         </div>
 
         <div>
@@ -47,7 +86,7 @@ export function AssumptionsForm({ assumptions, onChange }: AssumptionsFormProps)
           </label>
           <NumberInput
             value={assumptions.safeWithdrawalRate}
-            onChange={(val) => handleChange('safeWithdrawalRate', val)}
+            onChange={(val) => handleChange("safeWithdrawalRate", val)}
             min={1}
             max={10}
             isPercentage
@@ -55,7 +94,9 @@ export function AssumptionsForm({ assumptions, onChange }: AssumptionsFormProps)
             defaultValue={0.04}
             className={inputClassName}
           />
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Traditional rule: 4%</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Traditional rule: 4%
+          </p>
         </div>
 
         <div>
@@ -65,7 +106,7 @@ export function AssumptionsForm({ assumptions, onChange }: AssumptionsFormProps)
           </label>
           <NumberInput
             value={assumptions.retirementReturnRate}
-            onChange={(val) => handleChange('retirementReturnRate', val)}
+            onChange={(val) => handleChange("retirementReturnRate", val)}
             min={0}
             max={15}
             isPercentage
@@ -73,7 +114,9 @@ export function AssumptionsForm({ assumptions, onChange }: AssumptionsFormProps)
             defaultValue={0.05}
             className={inputClassName}
           />
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Conservative assumption: 5%</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Conservative assumption: 5%
+          </p>
         </div>
 
         <div>
@@ -83,12 +126,14 @@ export function AssumptionsForm({ assumptions, onChange }: AssumptionsFormProps)
           </label>
           <NumberInput
             value={assumptions.annualSpendingGoal ?? 60000}
-            onChange={(val) => handleChange('annualSpendingGoal', val)}
+            onChange={(val) => handleChange("annualSpendingGoal", val)}
             min={0}
             defaultValue={60000}
             className={inputClassName}
           />
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Today's dollars; used for FIRE numbers</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Today's dollars; used for FIRE numbers
+          </p>
         </div>
 
         <div>
@@ -98,12 +143,14 @@ export function AssumptionsForm({ assumptions, onChange }: AssumptionsFormProps)
           </label>
           <NumberInput
             value={assumptions.baristaAnnualIncome ?? 20000}
-            onChange={(val) => handleChange('baristaAnnualIncome', val)}
+            onChange={(val) => handleChange("baristaAnnualIncome", val)}
             min={0}
             defaultValue={20000}
             className={inputClassName}
           />
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Today's dollars; used for Barista FIRE</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Today's dollars; used for Barista FIRE
+          </p>
         </div>
       </div>
     </div>

@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { v4 as uuidv4 } from "uuid";
+import { ASSUMPTION_PRESETS } from "../utils/assumptionPresets";
+import { getStateTaxRate } from "../utils/stateTaxRates";
 import type {
   Profile,
   Account,
@@ -112,6 +114,7 @@ interface WizardState {
   lifeExpectancy: number;
   filingStatus: FilingStatus;
   // Step 2 — Savings & Income
+  annualIncome: number;
   savingsBand: number; // 0–5 index
   exactSavings: number | null; // null = use band midpoint
   annualContribution: number;
@@ -120,6 +123,8 @@ interface WizardState {
   // Step 3 — Country & Region
   country: CountryCode;
   region: string;
+  // Market assumptions
+  assumptionPreset: "conservative" | "moderate" | "optimistic";
 }
 
 const defaultState: WizardState = {
@@ -127,6 +132,7 @@ const defaultState: WizardState = {
   retirementAge: 65,
   lifeExpectancy: 90,
   filingStatus: "single",
+  annualIncome: 80_000,
   savingsBand: 2,
   exactSavings: null,
   annualContribution: 15_000,
@@ -134,6 +140,7 @@ const defaultState: WizardState = {
   monthlySSBenefit: 2_000,
   country: "US",
   region: "TX",
+  assumptionPreset: "moderate",
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -198,14 +205,19 @@ function buildResult(state: WizardState): {
     retirementAge: state.retirementAge,
     lifeExpectancy: state.lifeExpectancy,
     region: state.region,
-    ...(isUS && { filingStatus: state.filingStatus }),
+    annualIncome: state.annualIncome,
+    ...(isUS && {
+      filingStatus: state.filingStatus,
+      stateTaxRate: getStateTaxRate(state.region),
+    }),
   };
 
   // Assumptions
+  const presetValues = ASSUMPTION_PRESETS.find(
+    (p) => p.id === state.assumptionPreset,
+  )!.values;
   const assumptions: Assumptions = {
-    inflationRate: 0.03,
-    safeWithdrawalRate: 0.04,
-    retirementReturnRate: 0.05,
+    ...presetValues,
     annualSpendingGoal,
   };
 
@@ -387,6 +399,34 @@ function StepSavings({
         </p>
       </div>
 
+      {/* Market assumptions preset */}
+      <div>
+        <label className={labelCls}>Market assumptions</label>
+        <div className="flex gap-2">
+          {ASSUMPTION_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() => onChange({ assumptionPreset: preset.id })}
+              className={
+                "flex-1 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors " +
+                (state.assumptionPreset === preset.id
+                  ? "bg-blue-50 dark:bg-blue-900/30 border-blue-500 text-blue-700 dark:text-blue-300"
+                  : "bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-blue-400 dark:hover:border-blue-500")
+              }
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+          {
+            ASSUMPTION_PRESETS.find((p) => p.id === state.assumptionPreset)!
+              .description
+          }
+        </p>
+      </div>
+
       {/* Savings slider + exact input */}
       <div>
         <label className={labelCls}>Total savings today</label>
@@ -455,9 +495,36 @@ function StepSavings({
         </div>
       </div>
 
+      {/* Current salary */}
+      <div>
+        <label className={labelCls}>Current annual salary (today's $)</label>
+        <div className="relative">
+          <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500 dark:text-gray-400 text-sm pointer-events-none">
+            $
+          </span>
+          <input
+            type="number"
+            className={inputCls + " pl-6"}
+            value={state.annualIncome}
+            min={0}
+            step={1000}
+            onChange={(e) =>
+              onChange({
+                annualIncome: Math.max(0, parseInt(e.target.value) || 0),
+              })
+            }
+          />
+        </div>
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          Used to estimate your current tax bracket.
+        </p>
+      </div>
+
       {/* Annual contribution */}
       <div>
-        <label className={labelCls}>Annual contribution (today's $)</label>
+        <label className={labelCls}>
+          Annual retirement contribution (today's $)
+        </label>
         <div className="relative">
           <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500 dark:text-gray-400 text-sm pointer-events-none">
             $
@@ -548,6 +615,10 @@ function StepCountry({
     onChange({ country, region: defaultRegion });
   };
 
+  const handleRegionChange = (region: string) => {
+    onChange({ region });
+  };
+
   return (
     <div className="space-y-5">
       <div>
@@ -593,7 +664,7 @@ function StepCountry({
         <select
           className={inputCls}
           value={state.region}
-          onChange={(e) => onChange({ region: e.target.value })}
+          onChange={(e) => handleRegionChange(e.target.value)}
         >
           {regions.map(({ code, name }) => (
             <option key={code} value={code}>
