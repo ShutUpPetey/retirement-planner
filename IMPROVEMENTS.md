@@ -51,7 +51,7 @@ Low — all the data already exists in result objects, this is purely a new visu
 ---
 
 ### 3. Life events · Effort: M · Decision tools
-- [ ] **Done**
+- [x] **Done**
 
 **What it does**
 Let users define one-time or time-bounded events that affect cashflow: mortgage payoff (frees up monthly cash), kids' college tuition (4-year expense spike), home purchase (lump-sum drawdown), car purchase, inheritance, rental income start/stop. These feed into the accumulation and withdrawal projections so the chart shows realistic bumps and dips rather than a smooth curve.
