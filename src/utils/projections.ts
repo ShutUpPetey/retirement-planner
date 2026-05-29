@@ -3,6 +3,7 @@ import {
   Profile,
   AccumulationResult,
   YearlyAccountBalance,
+  LifeEvent,
   is401k,
 } from '../types';
 import type { CountryConfig } from '../countries';
@@ -30,7 +31,9 @@ function calculateEmployerMatch(account: Account): number {
 export function calculateAccumulation(
   accounts: Account[],
   profile: Profile,
-  countryConfig: CountryConfig
+  countryConfig: CountryConfig,
+  lifeEvents: LifeEvent[] = [],
+  inflationRate = 0.03
 ): AccumulationResult {
   const yearsToRetirement = profile.retirementAge - profile.currentAge;
   const currentYear = new Date().getFullYear();
@@ -60,6 +63,22 @@ export function calculateAccumulation(
     const age = profile.currentAge + i;
     const year = currentYear + i;
 
+    // Compute net contribution delta from recurring life events active this year
+    let contributionDelta = 0;
+    for (const event of lifeEvents) {
+      if (event.type === 'lump_sum') continue;
+      const active = age >= event.startAge && (event.endAge === undefined || age <= event.endAge);
+      if (!active) continue;
+      const effectiveAmount = event.inflationAdjust
+        ? event.amount * Math.pow(1 + inflationRate, age - profile.currentAge)
+        : event.amount;
+      if (event.type === 'expense') contributionDelta -= effectiveAmount;
+      else contributionDelta += effectiveAmount;
+    }
+
+    // Scale contribution delta proportionally per account
+    const totalBaseContribution = accounts.reduce((sum, a) => sum + contributions[a.id], 0);
+
     accounts.forEach(account => {
       const currentBalance = balances[account.id];
       const currentContribution = contributions[account.id];
@@ -67,19 +86,35 @@ export function calculateAccumulation(
       // 1. Apply investment return to existing balance
       const balanceAfterReturn = currentBalance * (1 + account.returnRate);
 
-      // 2. Add contribution (with employer match if applicable)
+      // 2. Add contribution adjusted for life events (proportional to account's share)
+      const accountShare = totalBaseContribution > 0 ? currentContribution / totalBaseContribution : 1 / accounts.length;
+      const adjustedContribution = Math.max(0, currentContribution + contributionDelta * accountShare);
+
       const employerMatch = calculateEmployerMatch({
         ...account,
-        annualContribution: currentContribution,
+        annualContribution: adjustedContribution,
       });
-      const totalContribution = currentContribution + employerMatch;
+      const totalContribution = adjustedContribution + employerMatch;
 
       // Update balance
       balances[account.id] = balanceAfterReturn + totalContribution;
 
-      // 3. Grow contribution for next year
+      // 3. Grow contribution for next year (use original, not adjusted — adjustment is transient)
       contributions[account.id] = currentContribution * (1 + account.contributionGrowthRate);
     });
+
+    // Apply lump_sum life events: subtract from portfolio balance proportionally
+    for (const event of lifeEvents) {
+      if (event.type !== 'lump_sum' || age !== event.startAge) continue;
+      const effectiveAmount = event.inflationAdjust
+        ? event.amount * Math.pow(1 + inflationRate, age - profile.currentAge)
+        : event.amount;
+      const totalBal = Object.values(balances).reduce((s, b) => s + b, 0);
+      for (const account of accounts) {
+        const share = totalBal > 0 ? balances[account.id] / totalBal : 1 / accounts.length;
+        balances[account.id] = Math.max(0, balances[account.id] - effectiveAmount * share);
+      }
+    }
 
     const totalBalance = Object.values(balances).reduce((sum, b) => sum + b, 0);
 

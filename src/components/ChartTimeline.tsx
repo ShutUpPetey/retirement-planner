@@ -9,27 +9,30 @@ interface ChartTimelineProps {
 }
 
 const CAT_DOT: Record<MilestoneCategory, string> = {
-  work:       'bg-blue-500',
-  retirement: 'bg-green-500',
-  benefits:   'bg-purple-500',
-  portfolio:  'bg-orange-500',
-  tax:        'bg-yellow-500',
+  work:        'bg-blue-500',
+  retirement:  'bg-green-500',
+  benefits:    'bg-purple-500',
+  portfolio:   'bg-orange-500',
+  tax:         'bg-yellow-500',
+  life_event:  'bg-amber-400',
 };
 
 const CAT_TEXT: Record<MilestoneCategory, string> = {
-  work:       'text-blue-700 dark:text-blue-300',
-  retirement: 'text-green-700 dark:text-green-300',
-  benefits:   'text-purple-700 dark:text-purple-300',
-  portfolio:  'text-orange-700 dark:text-orange-300',
-  tax:        'text-yellow-700 dark:text-yellow-300',
+  work:        'text-blue-700 dark:text-blue-300',
+  retirement:  'text-green-700 dark:text-green-300',
+  benefits:    'text-purple-700 dark:text-purple-300',
+  portfolio:   'text-orange-700 dark:text-orange-300',
+  tax:         'text-yellow-700 dark:text-yellow-300',
+  life_event:  'text-amber-700 dark:text-amber-300',
 };
 
 const CAT_LABEL: Record<MilestoneCategory, string> = {
-  work:       'Working years',
-  retirement: 'Retirement',
-  benefits:   'Benefits',
-  portfolio:  'Portfolio',
-  tax:        'Tax events',
+  work:        'Working years',
+  retirement:  'Retirement',
+  benefits:    'Benefits',
+  portfolio:   'Portfolio',
+  tax:         'Tax events',
+  life_event:  'Life events',
 };
 
 export function ChartTimeline({ milestones, startAge, endAge }: ChartTimelineProps) {

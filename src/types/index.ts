@@ -39,6 +39,18 @@ export interface IncomeStream {
   taxTreatment: IncomeTaxTreatment;
 }
 
+export type LifeEventType = 'expense' | 'income' | 'lump_sum';
+
+export interface LifeEvent {
+  id: string;
+  name: string;
+  type: LifeEventType;
+  amount: number;          // today's dollars; annual for expense/income, one-time for lump_sum
+  startAge: number;
+  endAge?: number;         // omit for lump_sum and permanent changes
+  inflationAdjust: boolean;
+}
+
 export interface AccountWithdrawalRules {
   startAge: number;  // Age when withdrawals can begin
 }
@@ -214,7 +226,7 @@ export interface RetirementResult {
 
 // ---- Milestone timeline ----
 
-export type MilestoneCategory = 'work' | 'retirement' | 'benefits' | 'portfolio' | 'tax';
+export type MilestoneCategory = 'work' | 'retirement' | 'benefits' | 'portfolio' | 'tax' | 'life_event';
 
 export interface Milestone {
   age: number;
@@ -230,6 +242,7 @@ export interface AppState {
   accounts: Account[];
   profile: Profile;
   assumptions: Assumptions;
+  lifeEvents: LifeEvent[];
 }
 
 // Tax bracket structure

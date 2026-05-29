@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import { Account, Profile, Assumptions, IncomeStream } from "./types";
+import { Account, Profile, Assumptions, IncomeStream, LifeEvent } from "./types";
 import {
   DEFAULT_PROFILE,
   DEFAULT_ASSUMPTIONS,
@@ -15,6 +15,7 @@ import { AccountList } from "./components/AccountList";
 import { ProfileForm } from "./components/ProfileForm";
 import { AssumptionsForm } from "./components/AssumptionsForm";
 import { IncomeStreamList } from "./components/IncomeStreamList";
+import { LifeEventList } from "./components/LifeEventList";
 import { SummaryCards } from "./components/SummaryCards";
 import { ChartAccumulation } from "./components/ChartAccumulation";
 import { ChartDrawdown } from "./components/ChartDrawdown";
@@ -171,6 +172,11 @@ function AppContent() {
     IncomeStream[]
   >("retirement-planner-income-streams", DEFAULT_INCOME_STREAMS);
 
+  const [lifeEvents, setLifeEvents, resetLifeEvents] = useLocalStorage<LifeEvent[]>(
+    "retirement-planner-life-events",
+    []
+  );
+
   // Dark mode
   const [isDarkMode, toggleDarkMode] = useDarkMode();
 
@@ -193,6 +199,7 @@ function AppContent() {
     assumptions,
     countryConfig,
     incomeStreams,
+    lifeEvents,
   );
 
   const milestones = useMemo(() => {
@@ -214,8 +221,9 @@ function AppContent() {
       earlyAccess,
       incomeStreams,
       countryConfig,
+      lifeEvents,
     );
-  }, [accounts, profile, assumptions, countryConfig, incomeStreams, accumulation, retirement]);
+  }, [accounts, profile, assumptions, countryConfig, incomeStreams, accumulation, retirement, lifeEvents]);
 
   const handleAddAccount = (account: Account) => {
     setAccounts((prev) => [...prev, account]);
@@ -245,6 +253,20 @@ function AppContent() {
     setIncomeStreams((prev) => prev.filter((s) => s.id !== id));
   };
 
+  const handleAddLifeEvent = (event: LifeEvent) => {
+    setLifeEvents((prev) => [...prev, event]);
+  };
+
+  const handleUpdateLifeEvent = (updatedEvent: LifeEvent) => {
+    setLifeEvents((prev) =>
+      prev.map((e) => (e.id === updatedEvent.id ? updatedEvent : e)),
+    );
+  };
+
+  const handleDeleteLifeEvent = (id: string) => {
+    setLifeEvents((prev) => prev.filter((e) => e.id !== id));
+  };
+
   const toggleSection = (section: string) => {
     setExpandedSection((prev) => (prev === section ? null : section));
   };
@@ -258,18 +280,19 @@ function AppContent() {
     resetProfile();
     resetAssumptions();
     resetIncomeStreams();
+    resetLifeEvents();
     setShowResetConfirm(false);
     // Force reload to get fresh default accounts with new UUIDs
     window.location.reload();
-  }, [resetAccounts, resetProfile, resetAssumptions, resetIncomeStreams]);
+  }, [resetAccounts, resetProfile, resetAssumptions, resetIncomeStreams, resetLifeEvents]);
 
   const cancelReset = useCallback(() => {
     setShowResetConfirm(false);
   }, []);
 
   const handleExportBackup = useCallback(() => {
-    exportBackup(accounts, profile, assumptions, incomeStreams);
-  }, [accounts, profile, assumptions, incomeStreams]);
+    exportBackup(accounts, profile, assumptions, incomeStreams, lifeEvents);
+  }, [accounts, profile, assumptions, incomeStreams, lifeEvents]);
 
   const handleExportCsv = useCallback(() => {
     exportProjectionsCsv(accumulation, retirement);
@@ -296,6 +319,10 @@ function AppContent() {
         localStorage.setItem(
           "retirement-planner-income-streams",
           JSON.stringify(parsed.incomeStreams),
+        );
+        localStorage.setItem(
+          "retirement-planner-life-events",
+          JSON.stringify(parsed.lifeEvents),
         );
         window.location.reload();
       } catch (err) {
@@ -485,6 +512,44 @@ function AppContent() {
                   onAdd={handleAddIncomeStream}
                   onUpdate={handleUpdateIncomeStream}
                   onDelete={handleDeleteIncomeStream}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Life Events Section */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+            <button
+              onClick={() => toggleSection("lifeEvents")}
+              className="w-full px-4 py-3 flex justify-between items-center hover:bg-gray-50 dark:hover:bg-gray-700 rounded-t-lg"
+            >
+              <span className="font-medium text-gray-900 dark:text-white">
+                Life Events
+              </span>
+              <svg
+                className={`w-5 h-5 text-gray-500 dark:text-gray-400 transition-transform ${
+                  expandedSection === "lifeEvents" ? "rotate-180" : ""
+                }`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
+                />
+              </svg>
+            </button>
+            {expandedSection === "lifeEvents" && (
+              <div className="px-4 pb-4">
+                <LifeEventList
+                  lifeEvents={lifeEvents}
+                  profile={profile}
+                  onAdd={handleAddLifeEvent}
+                  onUpdate={handleUpdateLifeEvent}
+                  onDelete={handleDeleteLifeEvent}
                 />
               </div>
             )}
