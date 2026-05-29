@@ -32,6 +32,7 @@ import { DataTableAccumulation } from "./components/DataTableAccumulation";
 import { DataTableWithdrawal } from "./components/DataTableWithdrawal";
 import { OnboardingWizard } from "./components/OnboardingWizard";
 import { ChartPlan } from "./components/ChartPlan";
+import { ChartTimeline } from "./components/ChartTimeline";
 import { deriveMilestones } from "./utils/milestones";
 import { calculateFire, calculateEarlyAccess } from "./utils/fire";
 import { v4 as uuidv4 } from "uuid";
@@ -589,6 +590,18 @@ function AppContent() {
                       retirement={retirement}
                       profile={profile}
                       milestones={milestones}
+                      isDarkMode={isDarkMode}
+                    />
+                  </div>
+
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">
+                      Milestone Timeline
+                    </h3>
+                    <ChartTimeline
+                      milestones={milestones}
+                      startAge={profile.currentAge}
+                      endAge={profile.lifeExpectancy}
                       isDarkMode={isDarkMode}
                     />
                   </div>

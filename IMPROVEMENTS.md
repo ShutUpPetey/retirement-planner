@@ -30,7 +30,7 @@ Very low. Pure UI work, no new calculations. Main risk is over-scoping with too 
 ---
 
 ### 2. Milestone timeline chart · Effort: M · UX & sharing
-- [ ] **Done**
+- [x] **Done**
 
 **What it does**
 A horizontal timeline showing when every major milestone lands across the plan: retirement, Social Security start, RMDs begin, early-access gap opens/closes, FIRE number hit, life events, account depletions, and portfolio end. Single at-a-glance view of the whole plan arc.
