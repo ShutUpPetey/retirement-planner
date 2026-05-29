@@ -5,6 +5,39 @@ import { CHART_COLORS } from '../utils/constants';
 import { getDefaultWithdrawalAge } from '../utils/withdrawalDefaults';
 import type { CountryConfig } from '../countries';
 
+/** Compute the current-year employer match from the account's stored fields. */
+function computeMatch(account: Account, countryConfig: CountryConfig): number {
+  if (!account.employerMatchPercent) return 0;
+
+  const limits = countryConfig.getContributionLimits();
+  const rawLimit = limits[account.type];
+  const irsBase = rawLimit
+    ? typeof rawLimit === 'number' ? rawLimit : (rawLimit.annual ?? rawLimit.max ?? 0)
+    : 0;
+
+  const effectiveContrib = account.useIrsMaxContribution && irsBase > 0
+    ? irsBase
+    : account.annualContribution;
+
+  if (account.employerMatchLimitType === 'salary_percent') {
+    if (!account.annualSalary || !account.employerMatchLimitPercent) return 0;
+    return Math.min(effectiveContrib, account.annualSalary * account.employerMatchLimitPercent)
+      * account.employerMatchPercent;
+  }
+  if (!account.employerMatchLimit) return 0;
+  return Math.min(effectiveContrib * account.employerMatchPercent, account.employerMatchLimit);
+}
+
+/** Resolve the effective annual contribution shown on the card. */
+function effectiveContrib(account: Account, countryConfig: CountryConfig): number {
+  const limits = countryConfig.getContributionLimits();
+  const rawLimit = limits[account.type];
+  const irsBase = rawLimit
+    ? typeof rawLimit === 'number' ? rawLimit : (rawLimit.annual ?? rawLimit.max ?? 0)
+    : 0;
+  return account.useIrsMaxContribution && irsBase > 0 ? irsBase : account.annualContribution;
+}
+
 interface AccountListProps {
   accounts: Account[];
   profile: Profile;
@@ -113,9 +146,30 @@ export function AccountList({ accounts, profile, countryConfig, onAdd, onUpdate,
                   <div className="font-medium text-gray-900 dark:text-white">
                     {formatCurrency(account.balance)}
                   </div>
-                  <div className="text-sm text-gray-500 dark:text-gray-400">
-                    +{formatCurrency(account.annualContribution)}/yr
-                  </div>
+                  {(() => {
+                    const contrib = effectiveContrib(account, countryConfig);
+                    const match = computeMatch(account, countryConfig);
+                    return (
+                      <div className="text-sm text-gray-500 dark:text-gray-400 space-y-0.5">
+                        <div>
+                          +{formatCurrency(contrib)}/yr
+                          {account.useIrsMaxContribution && (
+                            <span className="ml-1 text-xs text-blue-600 dark:text-blue-400 font-medium">IRS max</span>
+                          )}
+                        </div>
+                        {match > 0 && (
+                          <div className="text-green-600 dark:text-green-400">
+                            +{formatCurrency(match)} match
+                          </div>
+                        )}
+                        {match > 0 && (
+                          <div className="font-medium text-gray-700 dark:text-gray-200 border-t border-gray-200 dark:border-gray-600 pt-0.5 mt-0.5">
+                            = {formatCurrency(contrib + match)}/yr total
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div className="flex gap-1">

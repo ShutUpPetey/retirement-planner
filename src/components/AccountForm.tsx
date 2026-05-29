@@ -194,27 +194,12 @@ export function AccountForm({ account, profile, onSave, onCancel }: AccountFormP
         </div>
 
         <div>
-          <div className="flex items-center justify-between mb-1">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Annual Contribution ($)
-            </label>
-            {irsLimit > 0 && (
-              <label className="flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={!!formData.useIrsMaxContribution}
-                  onChange={(e) => setFormData(prev => ({ ...prev, useIrsMaxContribution: e.target.checked }))}
-                  className="rounded"
-                />
-                <span className="text-xs font-medium text-blue-700 dark:text-blue-300">
-                  Max out ({irsLimitLabel}: ${irsLimit.toLocaleString()}/yr)
-                </span>
-              </label>
-            )}
-          </div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Annual Contribution ($)
+          </label>
           {formData.useIrsMaxContribution && irsLimit > 0 ? (
-            <div className="px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-md text-sm text-blue-800 dark:text-blue-300">
-              ${irsLimit.toLocaleString()}/yr · grows with inflation each year to match {irsLimitLabel} adjustments
+            <div className={inputClassName + ' text-gray-500 dark:text-gray-400 cursor-not-allowed select-none'}>
+              ${irsLimit.toLocaleString()} ({irsLimitLabel})
             </div>
           ) : (
             <NumberInput
@@ -227,6 +212,19 @@ export function AccountForm({ account, profile, onSave, onCancel }: AccountFormP
           )}
           {errors.annualContribution && (
             <p className="text-red-500 text-xs mt-1">{errors.annualContribution}</p>
+          )}
+          {irsLimit > 0 && (
+            <label className="flex items-center gap-2 mt-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!formData.useIrsMaxContribution}
+                onChange={(e) => setFormData(prev => ({ ...prev, useIrsMaxContribution: e.target.checked }))}
+                className="mt-0.5"
+              />
+              <span className="text-xs text-gray-600 dark:text-gray-400">
+                Max out — use {irsLimitLabel} limit (${irsLimit.toLocaleString()}/yr, grows with inflation)
+              </span>
+            </label>
           )}
         </div>
       </div>
@@ -267,16 +265,16 @@ export function AccountForm({ account, profile, onSave, onCancel }: AccountFormP
       </div>
 
       {showEmployerMatchFields && (
-        <div className="border-t border-gray-200 dark:border-gray-600 pt-4 mt-4">
-          <h4 className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-3">
+        <div className="border-t border-gray-200 dark:border-gray-600 pt-4 mt-4 space-y-3">
+          <h4 className="text-sm font-medium text-gray-800 dark:text-gray-200">
             {is401k(formData.type) ? '401(k) Employer Match' : 'Employer Match'}
           </h4>
 
           {/* Match rate */}
-          <div className="mb-3">
+          <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Match Rate (%)
-              <Tooltip text="Rate the employer matches your contributions — e.g. 100% = dollar-for-dollar, 50% = 50¢ per $1 you contribute" />
+              <Tooltip text="The rate the employer matches — 100% means dollar-for-dollar, 50% means 50¢ per $1 you contribute." />
             </label>
             <NumberInput
               value={formData.employerMatchPercent || 0}
@@ -290,68 +288,63 @@ export function AccountForm({ account, profile, onSave, onCancel }: AccountFormP
             />
           </div>
 
-          {/* Match cap toggle */}
-          <div className="mb-3">
+          {/* Match cap — how the limit is expressed */}
+          <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Match Cap
-              <Tooltip text="The employer only matches up to this limit. '% of salary' grows as your salary grows." />
+              <Tooltip text="Employer only matches up to this limit. '% of salary' automatically grows as your pay increases." />
             </label>
-            <div className="grid grid-cols-2 gap-2 mb-2">
-              <button
-                type="button"
-                onClick={() => setFormData(prev => ({ ...prev, employerMatchLimitType: 'dollar' }))}
-                className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
-                  (formData.employerMatchLimitType ?? 'dollar') === 'dollar'
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                    : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-blue-300'
-                }`}
-              >
-                $ Dollar amount
-              </button>
-              <button
-                type="button"
-                onClick={() => setFormData(prev => ({ ...prev, employerMatchLimitType: 'salary_percent' }))}
-                className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
-                  formData.employerMatchLimitType === 'salary_percent'
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                    : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-blue-300'
-                }`}
-              >
-                % of salary
-              </button>
-            </div>
+            <select
+              value={formData.employerMatchLimitType ?? 'dollar'}
+              onChange={(e) => setFormData(prev => ({
+                ...prev,
+                employerMatchLimitType: e.target.value as 'dollar' | 'salary_percent',
+              }))}
+              className={inputClassName}
+            >
+              <option value="dollar">Dollar amount (fixed cap)</option>
+              <option value="salary_percent">% of salary (grows with income)</option>
+            </select>
+          </div>
 
-            {formData.employerMatchLimitType === 'salary_percent' ? (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                    Cap (% of salary)
-                  </label>
-                  <NumberInput
-                    value={formData.employerMatchLimitPercent || 0}
-                    onChange={(val) => setFormData(prev => ({ ...prev, employerMatchLimitPercent: val }))}
-                    min={0}
-                    max={100}
-                    isPercentage
-                    decimals={1}
-                    defaultValue={0}
-                    className={inputClassName}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                    Your Annual Salary ($)
-                  </label>
-                  <NumberInput
-                    value={formData.annualSalary || 0}
-                    onChange={(val) => setFormData(prev => ({ ...prev, annualSalary: val }))}
-                    min={0}
-                    defaultValue={0}
-                    className={inputClassName}
-                  />
-                </div>
+          {/* Cap inputs */}
+          {(formData.employerMatchLimitType ?? 'dollar') === 'salary_percent' ? (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Salary Cap (%)
+                  <Tooltip text="e.g. 5 means the employer matches up to 5% of your salary" />
+                </label>
+                <NumberInput
+                  value={formData.employerMatchLimitPercent || 0}
+                  onChange={(val) => setFormData(prev => ({ ...prev, employerMatchLimitPercent: val }))}
+                  min={0}
+                  max={100}
+                  isPercentage
+                  decimals={1}
+                  defaultValue={0}
+                  className={inputClassName}
+                />
               </div>
-            ) : (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Annual Salary ($)
+                </label>
+                <NumberInput
+                  value={formData.annualSalary || 0}
+                  onChange={(val) => setFormData(prev => ({ ...prev, annualSalary: val }))}
+                  min={0}
+                  defaultValue={0}
+                  className={inputClassName}
+                />
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Max Employer Contribution ($)
+                <Tooltip text="The maximum dollar amount the employer will contribute per year." />
+              </label>
               <NumberInput
                 value={formData.employerMatchLimit || 0}
                 onChange={(val) => handleChange('employerMatchLimit', val)}
@@ -359,24 +352,25 @@ export function AccountForm({ account, profile, onSave, onCancel }: AccountFormP
                 defaultValue={0}
                 className={inputClassName}
               />
-            )}
-          </div>
-
-          {/* Live match preview */}
-          {formData.employerMatchPercent && formData.employerMatchPercent > 0 && matchPreview > 0 && (
-            <div className="mt-1 px-3 py-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-md text-sm text-green-800 dark:text-green-300">
-              💰 Employer adds <strong>${matchPreview.toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr</strong>
-              {formData.employerMatchLimitType === 'salary_percent' && formData.annualSalary && formData.employerMatchLimitPercent && (
-                <span className="text-green-600 dark:text-green-400 text-xs ml-1">
-                  (cap: ${(formData.annualSalary * formData.employerMatchLimitPercent).toLocaleString(undefined, { maximumFractionDigits: 0 })})
-                </span>
-              )}
             </div>
           )}
-          {formData.employerMatchPercent && formData.employerMatchPercent > 0 && matchPreview === 0 && (
-            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-              Enter a match cap {formData.employerMatchLimitType === 'salary_percent' ? 'percentage and salary' : 'dollar amount'} to see your employer match.
-            </p>
+
+          {/* Live match preview */}
+          {(formData.employerMatchPercent ?? 0) > 0 && (
+            matchPreview > 0 ? (
+              <p className="text-sm text-green-700 dark:text-green-400">
+                Employer match: <strong>${matchPreview.toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr</strong>
+                {formData.employerMatchLimitType === 'salary_percent' && formData.annualSalary && formData.employerMatchLimitPercent && (
+                  <span className="text-gray-500 dark:text-gray-400 font-normal">
+                    {' '}(cap: ${(formData.annualSalary * formData.employerMatchLimitPercent).toLocaleString(undefined, { maximumFractionDigits: 0 })})
+                  </span>
+                )}
+              </p>
+            ) : (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Enter a cap {formData.employerMatchLimitType === 'salary_percent' ? '% and salary' : 'dollar amount'} to preview your match.
+              </p>
+            )
           )}
         </div>
       )}
