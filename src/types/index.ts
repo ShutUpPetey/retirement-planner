@@ -191,9 +191,10 @@ export interface RothAdvice {
 export interface YearlyAccountBalance {
   age: number;
   year: number;
-  balances: Record<string, number>; // accountId -> balance
+  balances: Record<string, number>;        // accountId -> end-of-year balance
   totalBalance: number;
-  contributions: Record<string, number>; // accountId -> contribution that year
+  contributions: Record<string, number>;   // accountId -> employee contribution actually used this year
+  employerContributions: Record<string, number>; // accountId -> employer match actually applied this year
 }
 
 export interface AccumulationResult {

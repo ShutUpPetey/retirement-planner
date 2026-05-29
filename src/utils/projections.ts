@@ -90,13 +90,16 @@ export function calculateAccumulation(
 
   const yearlyBalances: YearlyAccountBalance[] = [];
 
-  // Record initial state (year 0)
+  // Record initial state (year 0) — no contributions have been made yet
+  const emptyContribs: Record<string, number> = {};
+  accounts.forEach(a => { emptyContribs[a.id] = 0; });
   yearlyBalances.push({
     age: profile.currentAge,
     year: currentYear,
     balances: { ...balances },
     totalBalance: Object.values(balances).reduce((sum, b) => sum + b, 0),
-    contributions: { ...contributions },
+    contributions: { ...emptyContribs },
+    employerContributions: { ...emptyContribs },
   });
 
   // Project each year
@@ -120,6 +123,10 @@ export function calculateAccumulation(
     // Scale contribution delta proportionally per account
     const totalBaseContribution = accounts.reduce((sum, a) => sum + contributions[a.id], 0);
 
+    // Track what was actually used this year (for accurate table display)
+    const yearActualContribs: Record<string, number> = {};
+    const yearEmployerContribs: Record<string, number> = {};
+
     accounts.forEach(account => {
       const currentBalance = balances[account.id];
       const currentContribution = contributions[account.id];
@@ -141,6 +148,10 @@ export function calculateAccumulation(
       const salaryGrowthFactor = Math.pow(1 + account.contributionGrowthRate, i);
       const employerMatch = calculateEmployerMatch(account, adjustedContribution, salaryGrowthFactor);
       const totalContribution = adjustedContribution + employerMatch;
+
+      // Record the actual amounts used this year before growing the stored value
+      yearActualContribs[account.id]   = adjustedContribution;
+      yearEmployerContribs[account.id] = employerMatch;
 
       // Update balance
       balances[account.id] = balanceAfterReturn + totalContribution;
@@ -172,7 +183,8 @@ export function calculateAccumulation(
       year,
       balances: { ...balances },
       totalBalance,
-      contributions: { ...contributions },
+      contributions: { ...yearActualContribs },
+      employerContributions: { ...yearEmployerContribs },
     });
   }
 

@@ -87,7 +87,8 @@ export function exportProjectionsCsv(
 
   for (const y of accumulation.yearlyBalances) {
     const contrib = Object.values(y.contributions ?? {}).reduce((s, v) => s + v, 0);
-    rows.push(['accumulation', y.age, y.year, Math.round(y.totalBalance), Math.round(contrib), '', '', '']);
+    const match   = Object.values(y.employerContributions ?? {}).reduce((s, v) => s + v, 0);
+    rows.push(['accumulation', y.age, y.year, Math.round(y.totalBalance), Math.round(contrib + match), '', '', '']);
   }
 
   for (const w of retirement.yearlyWithdrawals) {
