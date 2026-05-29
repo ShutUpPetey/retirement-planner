@@ -196,6 +196,7 @@ export interface YearlyAccountBalance {
   totalBalance: number;
   contributions: Record<string, number>;   // accountId -> employee contribution actually used this year
   employerContributions: Record<string, number>; // accountId -> employer match actually applied this year
+  netLifeEventCost: number; // positive = net out-of-pocket expense from life events; negative = net income benefit
 }
 
 export interface AccumulationResult {

@@ -213,6 +213,14 @@ export function SummaryCards({
   const lifetimeFederalTax = yearlyWithdrawals.reduce((sum, y) => sum + y.federalTax, 0);
   const lifetimeStateTax = yearlyWithdrawals.reduce((sum, y) => sum + y.stateTax, 0);
 
+  // Life event out-of-pocket during accumulation
+  const accumOopYears = accumulationResult.yearlyBalances.filter(y => y.netLifeEventCost > 0);
+  const peakOopYear   = accumOopYears.reduce<typeof accumOopYears[0] | null>(
+    (max, y) => (!max || y.netLifeEventCost > max.netLifeEventCost) ? y : max, null
+  );
+  const totalOop = accumulationResult.yearlyBalances.reduce((s, y) => s + Math.max(0, y.netLifeEventCost), 0);
+  const hasAccumOop = peakOopYear !== null && peakOopYear.netLifeEventCost > 0;
+
   // Calculate average effective tax rate
   const avgEffectiveTaxRate = yearlyWithdrawals.length > 0
     ? yearlyWithdrawals.reduce((sum, y) => sum + (y.grossIncome > 0 ? y.totalTax / y.grossIncome : 0), 0) / yearlyWithdrawals.length
@@ -516,6 +524,28 @@ export function SummaryCards({
               </p>
             }
           />
+          {hasAccumOop && peakOopYear && (
+            <ExpandableStatCard
+              title="Peak Life Event Cost"
+              value={formatCurrency(peakOopYear.netLifeEventCost)}
+              subtitle={`Age ${peakOopYear.age} · extra out-of-pocket that year`}
+              color="amber"
+              formula="Sum of active expense events (inflation-adjusted) − income events"
+              details={
+                <div>
+                  <p className="mb-1">
+                    Total out-of-pocket from life events across accumulation: <strong>{formatCurrency(totalOop)}</strong>
+                  </p>
+                  <p className="mb-1">
+                    Peak year: age {peakOopYear.age} ({peakOopYear.year}) — {formatCurrency(peakOopYear.netLifeEventCost)}/yr
+                  </p>
+                  <p className="text-gray-500 dark:text-gray-400 italic">
+                    This is money needed from income/savings on top of your normal retirement contributions. It does not reduce your 401k deductions unless you've marked an event to do so.
+                  </p>
+                </div>
+              }
+            />
+          )}
           {profile.socialSecurityBenefit && profile.socialSecurityStartAge ? (
             <ExpandableStatCard
               title="Social Security"

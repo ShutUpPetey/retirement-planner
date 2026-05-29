@@ -119,6 +119,22 @@ export function calculateAccumulation(
   // Record initial state (year 0) — no contributions have been made yet
   const emptyContribs: Record<string, number> = {};
   accounts.forEach(a => { emptyContribs[a.id] = 0; });
+
+  // Helper: net out-of-pocket cost from recurring life events at a given age
+  const computeNetLifeEventCost = (age: number): number => {
+    let net = 0;
+    for (const event of lifeEvents) {
+      if (event.type === 'lump_sum') continue; // lump sums hit portfolio balance, not take-home pay
+      const active = age >= event.startAge && (event.endAge === undefined || age <= event.endAge);
+      if (!active) continue;
+      const amount = event.inflationAdjust
+        ? event.amount * Math.pow(1 + inflationRate, age - profile.currentAge)
+        : event.amount;
+      net += event.type === 'expense' ? amount : -amount;
+    }
+    return net;
+  };
+
   yearlyBalances.push({
     age: profile.currentAge,
     year: currentYear,
@@ -126,6 +142,7 @@ export function calculateAccumulation(
     totalBalance: Object.values(balances).reduce((sum, b) => sum + b, 0),
     contributions: { ...emptyContribs },
     employerContributions: { ...emptyContribs },
+    netLifeEventCost: computeNetLifeEventCost(profile.currentAge),
   });
 
   // Project each year
@@ -249,6 +266,7 @@ export function calculateAccumulation(
       totalBalance,
       contributions: { ...yearActualContribs },
       employerContributions: { ...yearEmployerContribs },
+      netLifeEventCost: computeNetLifeEventCost(age),
     });
   }
 

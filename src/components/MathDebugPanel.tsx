@@ -227,6 +227,24 @@ export function MathDebugPanel({
           {/* ── Accumulation content ── */}
           {isAccum && accumSnap && (
             <>
+              {/* Out-of-pocket callout for this year */}
+              {(() => {
+                const yr = accumulation.yearlyBalances.find(y => y.age === selectedAge);
+                const oop = yr?.netLifeEventCost ?? 0;
+                if (oop === 0) return null;
+                return (
+                  <div className={`rounded-md px-3 py-2 text-sm font-medium ${
+                    oop > 0
+                      ? 'bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 text-orange-800 dark:text-orange-300'
+                      : 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 text-green-800 dark:text-green-300'
+                  }`}>
+                    {oop > 0
+                      ? `💸 Out-of-pocket from life events this year: ${fmt(oop)} (comes from income/savings, not retirement accounts)`
+                      : `💰 Life event income this year: +${fmt(-oop)} (reduces money needed from portfolio)`}
+                  </div>
+                );
+              })()}
+
               <Section title={`💰 Contributions & Match — Age ${selectedAge} (${calYear})`}>
                 {accumSnap.map(({ account, contrib, grownContrib, irsMax, irsBase, effectiveSalary, match, matchFormula, matchNote }) => (
                   <Card key={account.id}>
@@ -287,21 +305,39 @@ export function MathDebugPanel({
               </Section>
 
               <Section title={`📈 Balance Walk-through — Age ${selectedAge}`}>
-                {accumSnap.map(({ account, prevBal, contrib, match, growth, newBal }) => (
-                  <Card key={account.id}>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">{account.name}</p>
-                    <Row label="Starting balance" result={fmt(prevBal)} />
-                    <Row label="+ Your contribution" result={fmt(contrib)} />
-                    {match > 0 && <Row label="+ Employer match" result={fmt(match)} />}
-                    <Row
-                      label={`× ${pct(account.returnRate)} investment return`}
-                      formula={`(${fmt(prevBal)} + ${fmt(contrib)}${match > 0 ? ` + ${fmt(match)}` : ''}) × ${pct(account.returnRate)}`}
-                      result={fmt(growth)}
-                    />
-                    <Divider />
-                    <Row label="End-of-year balance" result={fmt(newBal)} />
-                  </Card>
-                ))}
+                {(() => {
+                  const yr = accumulation.yearlyBalances.find(y => y.age === selectedAge);
+                  const oop = yr?.netLifeEventCost ?? 0;
+                  return (
+                    <>
+                      {accumSnap.map(({ account, prevBal, contrib, match, growth, newBal }) => (
+                        <Card key={account.id}>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">{account.name}</p>
+                          <Row label="Starting balance" result={fmt(prevBal)} />
+                          <Row label="+ Your contribution" result={fmt(contrib)} />
+                          {match > 0 && <Row label="+ Employer match" result={fmt(match)} />}
+                          <Row
+                            label={`× ${pct(account.returnRate)} investment return`}
+                            formula={`(${fmt(prevBal)} + ${fmt(contrib)}${match > 0 ? ` + ${fmt(match)}` : ''}) × ${pct(account.returnRate)}`}
+                            result={fmt(growth)}
+                          />
+                          <Divider />
+                          <Row label="End-of-year balance" result={fmt(newBal)} />
+                        </Card>
+                      ))}
+                      {oop !== 0 && (
+                        <Card>
+                          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">💸 Out-of-Pocket This Year</p>
+                          <Row
+                            label={oop > 0 ? 'Life event expenses' : 'Life event income'}
+                            result={oop > 0 ? fmt(oop) : `+${fmt(-oop)}`}
+                            note="Paid from income / savings — separate from retirement account contributions"
+                          />
+                        </Card>
+                      )}
+                    </>
+                  );
+                })()}
               </Section>
             </>
           )}

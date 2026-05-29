@@ -23,6 +23,8 @@ export function DataTableAccumulation({ accounts, result }: DataTableAccumulatio
 
   if (!result.yearlyBalances.length) return null;
 
+  const hasLifeEvents = result.yearlyBalances.some(y => y.netLifeEventCost !== 0);
+
   const getColorClass = (accountType: Account['type']): string => {
     const treatment = getTaxTreatment(accountType);
     switch (treatment) {
@@ -87,17 +89,23 @@ export function DataTableAccumulation({ accounts, result }: DataTableAccumulatio
                     <th className="text-right py-2 px-2 font-medium text-gray-700 dark:text-gray-300">You</th>
                     <th className="text-right py-2 px-2 font-medium text-green-600 dark:text-green-400">Match</th>
                     <th className="text-right py-2 px-2 font-medium text-gray-700 dark:text-gray-300">Total Contrib</th>
+                    {hasLifeEvents && (
+                      <th className="text-right py-2 px-2 font-medium text-orange-600 dark:text-orange-400">
+                        Out of Pocket
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
                   {result.yearlyBalances.map((yearData, index) => {
-                    const prevBalance  = index > 0 ? result.yearlyBalances[index - 1].totalBalance : yearData.totalBalance;
-                    const growth       = yearData.totalBalance - prevBalance;
+                    const prevBalance   = index > 0 ? result.yearlyBalances[index - 1].totalBalance : yearData.totalBalance;
+                    const growth        = yearData.totalBalance - prevBalance;
                     const totalEmployee = Object.values(yearData.contributions).reduce((s, c) => s + c, 0);
                     const totalMatch    = Object.values(yearData.employerContributions).reduce((s, c) => s + c, 0);
+                    const oop           = yearData.netLifeEventCost;
 
                     return (
-                      <tr key={yearData.age} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                      <tr key={yearData.age} className={`border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/50 ${oop > 0 ? 'bg-orange-50/40 dark:bg-orange-900/10' : ''}`}>
                         <td className="py-2 px-2 font-medium text-gray-900 dark:text-white sticky left-0 bg-white dark:bg-gray-800">{yearData.age}</td>
                         <td className="py-2 px-2 text-gray-600 dark:text-gray-400">{yearData.year}</td>
                         <td className="py-2 px-2 text-right font-mono text-gray-900 dark:text-white">{formatCurrency(yearData.totalBalance)}</td>
@@ -113,10 +121,36 @@ export function DataTableAccumulation({ accounts, result }: DataTableAccumulatio
                         <td className="py-2 px-2 text-right font-mono font-medium text-gray-900 dark:text-white">
                           {(totalEmployee + totalMatch) > 0 ? formatCurrency(totalEmployee + totalMatch) : '—'}
                         </td>
+                        {hasLifeEvents && (
+                          <td className={`py-2 px-2 text-right font-mono font-medium ${
+                            oop > 0 ? 'text-orange-600 dark:text-orange-400'
+                            : oop < 0 ? 'text-green-600 dark:text-green-400'
+                            : 'text-gray-400 dark:text-gray-600'
+                          }`}>
+                            {oop > 0 ? formatCurrency(oop)
+                            : oop < 0 ? `+${formatCurrency(-oop)}`
+                            : '—'}
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
                 </tbody>
+                {hasLifeEvents && (
+                  <tfoot>
+                    <tr className="border-t-2 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900">
+                      <td colSpan={7} className="py-2 px-2 font-medium text-gray-700 dark:text-gray-300 sticky left-0 bg-gray-50 dark:bg-gray-900 text-right">
+                        Lifetime out-of-pocket from life events:
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono font-bold text-orange-600 dark:text-orange-400">
+                        {(() => {
+                          const total = result.yearlyBalances.reduce((s, y) => s + y.netLifeEventCost, 0);
+                          return total > 0 ? formatCurrency(total) : total < 0 ? `+${formatCurrency(-total)}` : '—';
+                        })()}
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             )}
 
