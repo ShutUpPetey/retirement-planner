@@ -2,6 +2,7 @@ import {
   Account,
   Profile,
   Assumptions,
+  AccumulationResult,
   FireResult,
   FireTarget,
   FireProjectionPoint,
@@ -13,13 +14,13 @@ import {
   is401k,
   getTaxTreatment,
   getAccountTypeLabel,
-} from '../types';
-import type { CountryConfig } from '../countries';
+} from "../types";
+import type { CountryConfig } from "../countries";
 import {
   LEAN_FIRE_MULTIPLIER,
   FAT_FIRE_MULTIPLIER,
   DEFAULT_ACCUMULATION_RETURN,
-} from './constants';
+} from "./constants";
 
 /**
  * FIRE (Financial Independence / Retire Early) calculations.
@@ -38,9 +39,18 @@ import {
 const SPENDING_GOAL_FALLBACK = 60000;
 
 function employerMatch(account: Account): number {
-  const supportsMatch = is401k(account.type) || account.type === 'employer_rrsp';
-  if (!supportsMatch || !account.employerMatchPercent || !account.employerMatchLimit) return 0;
-  return Math.min(account.annualContribution * account.employerMatchPercent, account.employerMatchLimit);
+  const supportsMatch =
+    is401k(account.type) || account.type === "employer_rrsp";
+  if (
+    !supportsMatch ||
+    !account.employerMatchPercent ||
+    !account.employerMatchLimit
+  )
+    return 0;
+  return Math.min(
+    account.annualContribution * account.employerMatchPercent,
+    account.employerMatchLimit,
+  );
 }
 
 function weightedNominalReturn(accounts: Account[]): number {
@@ -49,7 +59,10 @@ function weightedNominalReturn(accounts: Account[]): number {
     if (accounts.length === 0) return DEFAULT_ACCUMULATION_RETURN;
     return accounts.reduce((sum, a) => sum + a.returnRate, 0) / accounts.length;
   }
-  return accounts.reduce((sum, a) => sum + a.returnRate * (a.balance / totalBalance), 0);
+  return accounts.reduce(
+    (sum, a) => sum + a.returnRate * (a.balance / totalBalance),
+    0,
+  );
 }
 
 /** First age the portfolio reaches `target`, projecting in REAL terms. null if not by 100. */
@@ -59,7 +72,7 @@ function ageWhenReached(
   realReturn: number,
   currentAge: number,
   retirementAge: number,
-  target: number
+  target: number,
 ): number | null {
   if (startBalance >= target) return currentAge;
   let balance = startBalance;
@@ -74,10 +87,12 @@ function ageWhenReached(
 export function calculateFire(
   accounts: Account[],
   profile: Profile,
-  assumptions: Assumptions
+  assumptions: Assumptions,
 ): FireResult {
-  const annualSpending = assumptions.annualSpendingGoal ?? SPENDING_GOAL_FALLBACK;
-  const swr = assumptions.safeWithdrawalRate > 0 ? assumptions.safeWithdrawalRate : 0.04;
+  const annualSpending =
+    assumptions.annualSpendingGoal ?? SPENDING_GOAL_FALLBACK;
+  const swr =
+    assumptions.safeWithdrawalRate > 0 ? assumptions.safeWithdrawalRate : 0.04;
   const inflation = assumptions.inflationRate ?? 0.03;
   const leanMult = assumptions.leanMultiplier ?? LEAN_FIRE_MULTIPLIER;
   const fatMult = assumptions.fatMultiplier ?? FAT_FIRE_MULTIPLIER;
@@ -85,74 +100,125 @@ export function calculateFire(
   const currentInvested = accounts.reduce((sum, a) => sum + a.balance, 0);
   const nominalReturnRate = weightedNominalReturn(accounts);
   const realReturnRate = (1 + nominalReturnRate) / (1 + inflation) - 1;
-  const yearsToRetirement = Math.max(0, profile.retirementAge - profile.currentAge);
+  const yearsToRetirement = Math.max(
+    0,
+    profile.retirementAge - profile.currentAge,
+  );
 
   // Continuing contributions in today's dollars (this year's contribution + match),
   // held flat in real terms for the "on your current path" projection.
   const realAnnualContribution = accounts.reduce(
     (sum, a) => sum + a.annualContribution + employerMatch(a),
-    0
+    0,
   );
 
   const fullNumber = annualSpending / swr;
   const leanNumber = (annualSpending * leanMult) / swr;
   const fatNumber = (annualSpending * fatMult) / swr;
   const coastNumber =
-    realReturnRate > -1 ? fullNumber / Math.pow(1 + realReturnRate, yearsToRetirement) : fullNumber;
+    realReturnRate > -1
+      ? fullNumber / Math.pow(1 + realReturnRate, yearsToRetirement)
+      : fullNumber;
   const baristaIncome = assumptions.baristaAnnualIncome ?? 0;
   const baristaNumber = Math.max(0, (annualSpending - baristaIncome) / swr);
 
   const coastAchieveAge = ageWhenReached(
-    currentInvested, 0, realReturnRate, profile.currentAge, profile.retirementAge, fullNumber
+    currentInvested,
+    0,
+    realReturnRate,
+    profile.currentAge,
+    profile.retirementAge,
+    fullNumber,
   );
 
   const makeTarget = (
-    id: FireTarget['id'], label: string, description: string,
-    targetNumber: number, contributionForProjection: number
+    id: FireTarget["id"],
+    label: string,
+    description: string,
+    targetNumber: number,
+    contributionForProjection: number,
   ): FireTarget => ({
-    id, label, description, targetNumber,
+    id,
+    label,
+    description,
+    targetNumber,
     achieved: currentInvested >= targetNumber,
     surplusOrShortfall: currentInvested - targetNumber,
     achieveAge: ageWhenReached(
-      currentInvested, contributionForProjection, realReturnRate,
-      profile.currentAge, profile.retirementAge, targetNumber
+      currentInvested,
+      contributionForProjection,
+      realReturnRate,
+      profile.currentAge,
+      profile.retirementAge,
+      targetNumber,
     ),
   });
 
   const targets: FireTarget[] = [
-    makeTarget('full', 'Full FIRE',
+    makeTarget(
+      "full",
+      "Full FIRE",
       `Your number: ${Math.round(1 / swr)}× annual spending. Fully fund your lifestyle from investments.`,
-      fullNumber, realAnnualContribution),
-    makeTarget('lean', 'Lean FIRE',
+      fullNumber,
+      realAnnualContribution,
+    ),
+    makeTarget(
+      "lean",
+      "Lean FIRE",
       `A leaner lifestyle at ${Math.round(leanMult * 100)}% of your target spending.`,
-      leanNumber, realAnnualContribution),
-    makeTarget('fat', 'Fat FIRE',
+      leanNumber,
+      realAnnualContribution,
+    ),
+    makeTarget(
+      "fat",
+      "Fat FIRE",
       `A more generous lifestyle at ${Math.round(fatMult * 100)}% of your target spending.`,
-      fatNumber, realAnnualContribution),
-    makeTarget('coast', 'Coast FIRE',
-      'Enough invested today that, with no further contributions, you coast to Full FIRE by retirement age.',
-      coastNumber, 0),
-    makeTarget('barista', 'Barista FIRE',
+      fatNumber,
+      realAnnualContribution,
+    ),
+    makeTarget(
+      "coast",
+      "Coast FIRE",
+      "Enough invested today that, with no further contributions, you coast to Full FIRE by retirement age.",
+      coastNumber,
+      0,
+    ),
+    makeTarget(
+      "barista",
+      "Barista FIRE",
       baristaIncome > 0
         ? `Withdrawals plus ~$${Math.round(baristaIncome).toLocaleString()}/yr of part-time income cover your spending.`
-        : 'Withdrawals plus part-time income cover your spending. Set a part-time income to personalize this.',
-      baristaNumber, realAnnualContribution),
+        : "Withdrawals plus part-time income cover your spending. Set a part-time income to personalize this.",
+      baristaNumber,
+      realAnnualContribution,
+    ),
   ];
 
   // Today's-dollar projection path from current age to life expectancy.
   const projection: FireProjectionPoint[] = [];
   let bal = currentInvested;
   const endAge = Math.max(profile.lifeExpectancy, profile.retirementAge + 1);
-  projection.push({ age: profile.currentAge, balance: bal, contributing: true });
+  projection.push({
+    age: profile.currentAge,
+    balance: bal,
+    contributing: true,
+  });
   for (let age = profile.currentAge + 1; age <= endAge; age++) {
     const contributing = age <= profile.retirementAge;
-    bal = bal * (1 + realReturnRate) + (contributing ? realAnnualContribution : 0);
+    bal =
+      bal * (1 + realReturnRate) + (contributing ? realAnnualContribution : 0);
     projection.push({ age, balance: Math.max(0, bal), contributing });
   }
 
   return {
-    currentInvested, annualSpending, nominalReturnRate, realReturnRate,
-    yearsToRetirement, coastAchieveAge, targets, projection,
+    currentInvested,
+    annualSpending,
+    nominalReturnRate,
+    realReturnRate,
+    yearsToRetirement,
+    coastAchieveAge,
+    targets,
+    projection,
   };
 }
 
@@ -161,7 +227,10 @@ export function calculateFire(
  * given current balance and real return. Returns 0 if already on track from balance alone.
  */
 function requiredAnnualSavings(
-  currentBalance: number, target: number, realReturn: number, years: number
+  currentBalance: number,
+  target: number,
+  realReturn: number,
+  years: number,
 ): number {
   if (years <= 0) return Math.max(0, target - currentBalance);
   const fvCurrent = currentBalance * Math.pow(1 + realReturn, years);
@@ -179,80 +248,98 @@ export function generateFireAdvice(
   fire: FireResult,
   accounts: Account[],
   profile: Profile,
-  _assumptions: Assumptions
+  _assumptions: Assumptions,
 ): string[] {
   const tips: string[] = [];
-  const fmt = (n: number) =>
-    `$${Math.round(n).toLocaleString()}`;
+  const fmt = (n: number) => `$${Math.round(n).toLocaleString()}`;
 
-  const full = fire.targets.find(t => t.id === 'full');
-  const coast = fire.targets.find(t => t.id === 'coast');
+  const full = fire.targets.find((t) => t.id === "full");
+  const coast = fire.targets.find((t) => t.id === "coast");
   const years = fire.yearsToRetirement;
 
   // 1. Coast status
   if (coast?.achieved) {
     tips.push(
       `You've hit Coast FIRE: your current savings alone should grow to your Full FIRE number by retirement${
-        fire.coastAchieveAge ? ` (around age ${fire.coastAchieveAge})` : ''
-      }. New contributions now mainly buy an earlier or richer retirement.`
+        fire.coastAchieveAge ? ` (around age ${fire.coastAchieveAge})` : ""
+      }. New contributions now mainly buy an earlier or richer retirement.`,
     );
   } else if (coast) {
     tips.push(
       `You're ${fmt(-coast.surplusOrShortfall)} away from Coast FIRE (${fmt(
-        coast.targetNumber
-      )}). Once you cross it, you could stop contributing and still reach your number by retirement age.`
+        coast.targetNumber,
+      )}). Once you cross it, you could stop contributing and still reach your number by retirement age.`,
     );
   }
 
   // 2. Required savings to hit Full FIRE by retirement age
   if (full && !full.achieved) {
     const needAnnual = requiredAnnualSavings(
-      fire.currentInvested, full.targetNumber, fire.realReturnRate, years
+      fire.currentInvested,
+      full.targetNumber,
+      fire.realReturnRate,
+      years,
     );
     const currentAnnual = accounts.reduce(
-      (s, a) => s + a.annualContribution + (a.employerMatchPercent && a.employerMatchLimit
-        ? Math.min(a.annualContribution * a.employerMatchPercent, a.employerMatchLimit) : 0),
-      0
+      (s, a) =>
+        s +
+        a.annualContribution +
+        (a.employerMatchPercent && a.employerMatchLimit
+          ? Math.min(
+              a.annualContribution * a.employerMatchPercent,
+              a.employerMatchLimit,
+            )
+          : 0),
+      0,
     );
     if (needAnnual <= 0) {
       tips.push(
-        `To reach Full FIRE by age ${profile.retirementAge}, your current balance alone is enough to coast — no further saving strictly required.`
+        `To reach Full FIRE by age ${profile.retirementAge}, your current balance alone is enough to coast — no further saving strictly required.`,
       );
     } else {
       const gap = needAnnual - currentAnnual;
       tips.push(
         `To reach Full FIRE (${fmt(full.targetNumber)}) by age ${profile.retirementAge}, save about ${fmt(
-          needAnnual
+          needAnnual,
         )}/yr (~${fmt(needAnnual / 12)}/mo) in today's dollars. ${
           gap > 0
             ? `That's ${fmt(gap)}/yr more than your current ${fmt(currentAnnual)}/yr.`
             : `You're already contributing ${fmt(currentAnnual)}/yr — on track or ahead.`
-        }`
+        }`,
       );
     }
   } else if (full?.achieved) {
-    tips.push(`You've reached your Full FIRE number (${fmt(full.targetNumber)}). Congratulations — you are financially independent on these assumptions.`);
+    tips.push(
+      `You've reached your Full FIRE number (${fmt(full.targetNumber)}). Congratulations — you are financially independent on these assumptions.`,
+    );
   }
 
   // 3. Tax diversification (account-mix awareness)
   const total = accounts.reduce((s, a) => s + a.balance, 0);
   if (total > 0) {
-    const byTreatment: Record<string, number> = { pretax: 0, roth: 0, taxable: 0, hsa: 0 };
-    accounts.forEach(a => { byTreatment[getTaxTreatment(a.type)] += a.balance; });
+    const byTreatment: Record<string, number> = {
+      pretax: 0,
+      roth: 0,
+      taxable: 0,
+      hsa: 0,
+    };
+    accounts.forEach((a) => {
+      byTreatment[getTaxTreatment(a.type)] += a.balance;
+    });
     const pct = (k: string) => Math.round((byTreatment[k] / total) * 100);
-    const rothPct = pct('roth');
-    const pretaxPct = pct('pretax');
+    const rothPct = pct("roth");
+    const pretaxPct = pct("pretax");
     if (rothPct < 15) {
       tips.push(
-        `Only ~${rothPct}% of your portfolio is in Roth/tax-free accounts. Building more Roth gives you tax-free, RMD-free flexibility and helps manage taxable income in retirement (also useful for early-retirement ACA subsidies).`
+        `Only ~${rothPct}% of your portfolio is in Roth/tax-free accounts. Building more Roth gives you tax-free, RMD-free flexibility and helps manage taxable income in retirement (also useful for early-retirement ACA subsidies).`,
       );
     } else if (pretaxPct > 80) {
       tips.push(
-        `~${pretaxPct}% of your portfolio is pre-tax. Large traditional balances drive Required Minimum Distributions after 73 — consider Roth contributions or conversions to spread the future tax bill.`
+        `~${pretaxPct}% of your portfolio is pre-tax. Large traditional balances drive Required Minimum Distributions after 73 — consider Roth contributions or conversions to spread the future tax bill.`,
       );
     } else {
       tips.push(
-        `Your tax mix looks reasonably diversified (~${pretaxPct}% pre-tax, ~${rothPct}% Roth). That flexibility helps you control taxable income year to year in retirement.`
+        `Your tax mix looks reasonably diversified (~${pretaxPct}% pre-tax, ~${rothPct}% Roth). That flexibility helps you control taxable income year to year in retirement.`,
       );
     }
   }
@@ -260,21 +347,20 @@ export function generateFireAdvice(
   // 4. Sequence-of-returns risk near retirement
   if (years <= 10 && years > 0) {
     tips.push(
-      `You're within ${years} years of retirement. This is when sequence-of-returns risk bites hardest — consider holding 1–3 years of expenses in cash/bonds so a downturn doesn't force selling at a low.`
+      `You're within ${years} years of retirement. This is when sequence-of-returns risk bites hardest — consider holding 1–3 years of expenses in cash/bonds so a downturn doesn't force selling at a low.`,
     );
   }
 
   // 5. Always-true fundamentals
   tips.push(
-    `Capture your full employer match first — it's an immediate ~50–100% return and the match always lands in a pre-tax account regardless of your Roth/Traditional choice.`
+    `Capture your full employer match first — it's an immediate ~50–100% return and the match always lands in a pre-tax account regardless of your Roth/Traditional choice.`,
   );
   tips.push(
-    `The 4% rule is a useful rule of thumb, not a guarantee. A lower withdrawal rate (3–3.5%) is safer for very long (early) retirements; you can raise it later if markets cooperate.`
+    `The 4% rule is a useful rule of thumb, not a guarantee. A lower withdrawal rate (3–3.5%) is safer for very long (early) retirements; you can raise it later if markets cooperate.`,
   );
 
   return tips;
 }
-
 
 /**
  * Early-access gap: when someone retires before the penalty-free age (59.5 -> 60 in
@@ -292,7 +378,8 @@ export function calculateEarlyAccess(
   profile: Profile,
   assumptions: Assumptions,
   countryConfig: CountryConfig,
-  incomeStreams: IncomeStream[] = []
+  incomeStreams: IncomeStream[] = [],
+  accumulationResult?: AccumulationResult,
 ): EarlyAccessAnalysis {
   const retirementAge = profile.retirementAge;
 
@@ -310,33 +397,66 @@ export function calculateEarlyAccess(
     return info.appliesToAccountType ? Math.ceil(info.penaltyAge) : 0;
   };
 
+  // Use projected balances at retirement age when available, otherwise fall back
+  // to current balances (e.g. when already at retirement age).
+  const retirementYearData = accumulationResult?.yearlyBalances.find(
+    (y) => y.age === retirementAge,
+  );
+
+  const getProjectedBalance = (a: Account): number => {
+    if (retirementYearData) {
+      return retirementYearData.balances[a.id] ?? 0;
+    }
+    return a.balance;
+  };
+
   let accessibleBalance = 0;
   let lockedBalance = 0;
   const accessibleLabels = new Set<string>();
   const lockedLabels = new Set<string>();
   for (const a of accounts) {
+    const balance = getProjectedBalance(a);
     if (accountReachableAge(a) <= retirementAge) {
-      accessibleBalance += a.balance;
-      if (a.balance > 0) accessibleLabels.add(getAccountTypeLabel(a.type));
+      accessibleBalance += balance;
+      if (balance > 0) accessibleLabels.add(getAccountTypeLabel(a.type));
     } else {
-      lockedBalance += a.balance;
-      if (a.balance > 0) lockedLabels.add(getAccountTypeLabel(a.type));
+      lockedBalance += balance;
+      if (balance > 0) lockedLabels.add(getAccountTypeLabel(a.type));
     }
   }
 
   const relevant = penaltyFreeAge > retirementAge && lockedBalance > 0;
   const yearsToBridge = Math.max(0, penaltyFreeAge - retirementAge);
 
-  // Spending to cover during the gap, net of income streams active in those years.
+  // Simulate the bridge period: accessible funds grow at the retirement return rate
+  // while covering spending (net of income streams). bridgeNeed is the total
+  // inflation-adjusted spending that can't be covered by account growth alone.
   const spending = assumptions.annualSpendingGoal ?? SPENDING_GOAL_FALLBACK;
+  const retirementReturn =
+    assumptions.retirementReturnRate ?? DEFAULT_ACCUMULATION_RETURN;
+  const inflation = assumptions.inflationRate ?? 0.03;
+
   let bridgeNeed = 0;
-  for (let age = retirementAge; age < penaltyFreeAge; age++) {
+  let runningBalance = accessibleBalance;
+  for (let i = 0; i < yearsToBridge; i++) {
+    const age = retirementAge + i;
+    const inflationMultiplier = Math.pow(1 + inflation, i);
+    const inflatedSpending = spending * inflationMultiplier;
     const income = incomeStreams.reduce((sum, str) => {
-      const on = age >= str.startAge && (str.endAge == null || age <= str.endAge);
+      const on =
+        age >= str.startAge && (str.endAge == null || age <= str.endAge);
       return on ? sum + str.monthlyAmount * 12 : sum;
     }, 0);
-    bridgeNeed += Math.max(0, spending - income);
+    const netDraw = Math.max(0, inflatedSpending - income);
+    bridgeNeed += netDraw;
+
+    // Grow accessible balance and subtract the draw to track remaining capacity.
+    runningBalance = runningBalance * (1 + retirementReturn) - netDraw;
   }
+
+  // shortfall: negative runningBalance means you ran out; positive means surplus.
+  // Negate so that positive = shortfall, negative = surplus (matches the UI expectation).
+  const shortfall = -runningBalance;
 
   return {
     relevant,
@@ -346,7 +466,7 @@ export function calculateEarlyAccess(
     accessibleBalance,
     lockedBalance,
     bridgeNeed,
-    shortfall: bridgeNeed - accessibleBalance,
+    shortfall,
     accessibleLabels: Array.from(accessibleLabels),
     lockedLabels: Array.from(lockedLabels),
   };
@@ -361,25 +481,30 @@ export function calculateEarlyAccess(
 export function calculateSocialSecurityCoverage(
   profile: Profile,
   assumptions: Assumptions,
-  incomeStreams: IncomeStream[] = []
+  incomeStreams: IncomeStream[] = [],
 ): SocialSecurityCoverage {
   const spending = assumptions.annualSpendingGoal ?? SPENDING_GOAL_FALLBACK;
-  const swr = assumptions.safeWithdrawalRate > 0 ? assumptions.safeWithdrawalRate : 0.04;
+  const swr =
+    assumptions.safeWithdrawalRate > 0 ? assumptions.safeWithdrawalRate : 0.04;
 
   let annualBenefit = 0;
   let startAge: number | null = null;
 
-  if (profile.country === 'CA') {
+  if (profile.country === "CA") {
     if (profile.socialSecurityBenefit && profile.socialSecurityBenefit > 0) {
       annualBenefit += profile.socialSecurityBenefit;
       startAge = profile.socialSecurityStartAge ?? 65;
     }
     if (profile.secondaryBenefitAmount && profile.secondaryBenefitAmount > 0) {
       annualBenefit += profile.secondaryBenefitAmount;
-      startAge = Math.max(startAge ?? 0, profile.secondaryBenefitStartAge ?? 65) || startAge;
+      startAge =
+        Math.max(startAge ?? 0, profile.secondaryBenefitStartAge ?? 65) ||
+        startAge;
     }
   } else {
-    const ss = incomeStreams.filter(s => s.taxTreatment === 'social_security');
+    const ss = incomeStreams.filter(
+      (s) => s.taxTreatment === "social_security",
+    );
     for (const s of ss) {
       annualBenefit += s.monthlyAmount * 12;
       startAge = Math.max(startAge ?? 0, s.startAge);
@@ -406,34 +531,45 @@ export function calculateSocialSecurityCoverage(
  */
 export function assessSwr(
   profile: Profile,
-  assumptions: Assumptions
+  assumptions: Assumptions,
 ): SwrAssessment {
-  const swr = assumptions.safeWithdrawalRate > 0 ? assumptions.safeWithdrawalRate : 0.04;
-  const retirementLengthYears = Math.max(0, profile.lifeExpectancy - profile.retirementAge);
+  const swr =
+    assumptions.safeWithdrawalRate > 0 ? assumptions.safeWithdrawalRate : 0.04;
+  const retirementLengthYears = Math.max(
+    0,
+    profile.lifeExpectancy - profile.retirementAge,
+  );
   const longRetirement = retirementLengthYears >= 30;
   const recommendedMax = longRetirement ? 0.035 : 0.04;
 
   let level: SwrLevel;
-  if (swr <= 0.035) level = 'conservative';
-  else if (swr <= 0.04) level = 'moderate';
-  else if (swr <= 0.045) level = 'aggressive';
-  else level = 'very_aggressive';
+  if (swr <= 0.035) level = "conservative";
+  else if (swr <= 0.04) level = "moderate";
+  else if (swr <= 0.045) level = "aggressive";
+  else level = "very_aggressive";
 
   const flagged = swr > recommendedMax;
   const pct = (r: number) => `${(r * 100).toFixed(1)}%`;
 
   let message: string;
-  if (level === 'conservative') {
+  if (level === "conservative") {
     message = `A ${pct(swr)} withdrawal rate is conservative and well-suited to a ${retirementLengthYears}-year retirement — it trades some spending today for a high chance of never running out.`;
-  } else if (level === 'moderate') {
+  } else if (level === "moderate") {
     message = longRetirement
       ? `${pct(swr)} is the classic 4% heuristic, which was calibrated to ~30 years. Your plan spans ${retirementLengthYears} years, so leaning toward 3–3.5% adds a safety margin.`
       : `${pct(swr)} is in line with the classic 4% rule for a ${retirementLengthYears}-year retirement. Reasonable, with normal market risk.`;
-  } else if (level === 'aggressive') {
+  } else if (level === "aggressive") {
     message = `${pct(swr)} is above the 4% guideline. Over a ${retirementLengthYears}-year retirement this raises the odds of depleting the portfolio in a poor sequence of returns — consider 3.5–4% or plan to flex spending in down years.`;
   } else {
     message = `${pct(swr)} is an aggressive withdrawal rate. Historically, rates this high have a meaningful failure risk over long retirements — treat it as a stretch case and have a plan to cut spending if markets disappoint.`;
   }
 
-  return { swr, level, retirementLengthYears, recommendedMax, flagged, message };
+  return {
+    swr,
+    level,
+    retirementLengthYears,
+    recommendedMax,
+    flagged,
+    message,
+  };
 }

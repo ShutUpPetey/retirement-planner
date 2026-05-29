@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState } from "react";
 import {
   LineChart,
   Line,
@@ -8,25 +8,34 @@ import {
   Tooltip as RTooltip,
   ResponsiveContainer,
   ReferenceLine,
-} from 'recharts';
-import { Account, Profile, Assumptions, RetirementResult, FireTarget, IncomeStream } from '../types';
-import type { CountryConfig } from '../countries';
+} from "recharts";
+import {
+  Account,
+  Profile,
+  Assumptions,
+  AccumulationResult,
+  RetirementResult,
+  FireTarget,
+  IncomeStream,
+} from "../types";
+import type { CountryConfig } from "../countries";
 import {
   calculateFire,
   generateFireAdvice,
   calculateEarlyAccess,
   calculateSocialSecurityCoverage,
   assessSwr,
-} from '../utils/fire';
-import { getRothVsTraditionalAdvice } from '../utils/rothVsTraditional';
-import { NumberInput } from './NumberInput';
-import { Tooltip } from './Tooltip';
+} from "../utils/fire";
+import { getRothVsTraditionalAdvice } from "../utils/rothVsTraditional";
+import { NumberInput } from "./NumberInput";
+import { Tooltip } from "./Tooltip";
 
 interface FirePanelProps {
   accounts: Account[];
   profile: Profile;
   assumptions: Assumptions;
   countryConfig: CountryConfig;
+  accumulation: AccumulationResult;
   retirement: RetirementResult;
   incomeStreams: IncomeStream[];
   onAssumptionsChange: (assumptions: Assumptions) => void;
@@ -34,13 +43,13 @@ interface FirePanelProps {
 }
 
 const inputClassName =
-  'w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white';
+  "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white";
 
 const TARGET_COLORS: Record<string, string> = {
-  full: '#2563eb',
-  lean: '#d97706',
-  fat: '#7c3aed',
-  barista: '#059669',
+  full: "#2563eb",
+  lean: "#d97706",
+  fat: "#7c3aed",
+  barista: "#059669",
 };
 
 export function FirePanel({
@@ -48,22 +57,39 @@ export function FirePanel({
   profile,
   assumptions,
   countryConfig,
+  accumulation,
   retirement,
   incomeStreams,
   onAssumptionsChange,
   isDarkMode = false,
 }: FirePanelProps) {
   const fire = calculateFire(accounts, profile, assumptions);
-  const advice = getRothVsTraditionalAdvice(profile, assumptions, countryConfig, retirement);
+  const advice = getRothVsTraditionalAdvice(
+    profile,
+    assumptions,
+    countryConfig,
+    retirement,
+  );
   const tips = generateFireAdvice(fire, accounts, profile, assumptions);
-  const earlyAccess = calculateEarlyAccess(accounts, profile, assumptions, countryConfig, incomeStreams);
-  const ssCoverage = calculateSocialSecurityCoverage(profile, assumptions, incomeStreams);
+  const earlyAccess = calculateEarlyAccess(
+    accounts,
+    profile,
+    assumptions,
+    countryConfig,
+    incomeStreams,
+    accumulation,
+  );
+  const ssCoverage = calculateSocialSecurityCoverage(
+    profile,
+    assumptions,
+    incomeStreams,
+  );
   const swr = assessSwr(profile, assumptions);
 
   const fmt = (n: number) =>
     new Intl.NumberFormat(undefined, {
-      style: 'currency',
-      currency: countryConfig.currency || 'USD',
+      style: "currency",
+      currency: countryConfig.currency || "USD",
       maximumFractionDigits: 0,
     }).format(Math.round(n));
 
@@ -72,8 +98,8 @@ export function FirePanel({
   const update = (field: keyof Assumptions, value: number) =>
     onAssumptionsChange({ ...assumptions, [field]: value });
 
-  const axisColor = isDarkMode ? '#9ca3af' : '#6b7280';
-  const gridColor = isDarkMode ? '#374151' : '#e5e7eb';
+  const axisColor = isDarkMode ? "#9ca3af" : "#6b7280";
+  const gridColor = isDarkMode ? "#374151" : "#e5e7eb";
 
   const compactCurrency = (v: number) => {
     if (Math.abs(v) >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
@@ -82,21 +108,33 @@ export function FirePanel({
   };
 
   const adviceBadge =
-    advice.recommendation === 'roth'
-      ? { text: 'Roth', cls: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300' }
-      : advice.recommendation === 'traditional'
-      ? { text: 'Traditional', cls: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300' }
-      : { text: 'Mixed', cls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' };
+    advice.recommendation === "roth"
+      ? {
+          text: "Roth",
+          cls: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
+        }
+      : advice.recommendation === "traditional"
+        ? {
+            text: "Traditional",
+            cls: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
+          }
+        : {
+            text: "Mixed",
+            cls: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+          };
 
-  const refTargets = fire.targets.filter((t) => t.id !== 'coast');
+  const refTargets = fire.targets.filter((t) => t.id !== "coast");
 
   return (
     <div className="space-y-6">
       {/* Adjustable inputs */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Adjust Your FIRE Inputs</h3>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+          Adjust Your FIRE Inputs
+        </h3>
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-          Tweak these to see how your targets and projection change. Changes are saved automatically.
+          Tweak these to see how your targets and projection change. Changes are
+          saved automatically.
         </p>
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
@@ -106,7 +144,7 @@ export function FirePanel({
             </label>
             <NumberInput
               value={assumptions.annualSpendingGoal ?? 60000}
-              onChange={(v) => update('annualSpendingGoal', v)}
+              onChange={(v) => update("annualSpendingGoal", v)}
               min={0}
               defaultValue={60000}
               className={inputClassName}
@@ -119,7 +157,7 @@ export function FirePanel({
             </label>
             <NumberInput
               value={assumptions.safeWithdrawalRate}
-              onChange={(v) => update('safeWithdrawalRate', v)}
+              onChange={(v) => update("safeWithdrawalRate", v)}
               min={1}
               max={10}
               isPercentage
@@ -135,7 +173,7 @@ export function FirePanel({
             </label>
             <NumberInput
               value={assumptions.baristaAnnualIncome ?? 20000}
-              onChange={(v) => update('baristaAnnualIncome', v)}
+              onChange={(v) => update("baristaAnnualIncome", v)}
               min={0}
               defaultValue={20000}
               className={inputClassName}
@@ -148,7 +186,7 @@ export function FirePanel({
             </label>
             <NumberInput
               value={assumptions.leanMultiplier ?? 0.7}
-              onChange={(v) => update('leanMultiplier', v)}
+              onChange={(v) => update("leanMultiplier", v)}
               min={10}
               max={100}
               isPercentage
@@ -164,7 +202,7 @@ export function FirePanel({
             </label>
             <NumberInput
               value={assumptions.fatMultiplier ?? 1.6}
-              onChange={(v) => update('fatMultiplier', v)}
+              onChange={(v) => update("fatMultiplier", v)}
               min={100}
               max={500}
               isPercentage
@@ -178,30 +216,43 @@ export function FirePanel({
 
       {/* FIRE overview */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">FIRE Targets</h3>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+          FIRE Targets
+        </h3>
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-          All figures are in today's dollars. Based on a {pct(assumptions.safeWithdrawalRate)} safe
-          withdrawal rate, a {fmt(fire.annualSpending)} annual spending goal, and an inflation-adjusted
-          return of {pct(fire.realReturnRate)} ({pct(fire.nominalReturnRate)} nominal).
+          All figures are in today's dollars. Based on a{" "}
+          {pct(assumptions.safeWithdrawalRate)} safe withdrawal rate, a{" "}
+          {fmt(fire.annualSpending)} annual spending goal, and an
+          inflation-adjusted return of {pct(fire.realReturnRate)} (
+          {pct(fire.nominalReturnRate)} nominal).
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {fire.targets.map((t) => (
-            <FireCard key={t.id} target={t} fmt={fmt} currentAge={profile.currentAge} />
+            <FireCard
+              key={t.id}
+              target={t}
+              fmt={fmt}
+              currentAge={profile.currentAge}
+            />
           ))}
         </div>
 
         <div className="mt-4 text-sm text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
-          <span className="font-medium">Current invested:</span> {fmt(fire.currentInvested)}
+          <span className="font-medium">Current invested:</span>{" "}
+          {fmt(fire.currentInvested)}
           {fire.coastAchieveAge !== null ? (
             <>
-              {' '}— if you stopped contributing today, your savings alone would reach your Full FIRE
-              number by <span className="font-medium">age {fire.coastAchieveAge}</span>.
+              {" "}
+              — if you stopped contributing today, your savings alone would
+              reach your Full FIRE number by{" "}
+              <span className="font-medium">age {fire.coastAchieveAge}</span>.
             </>
           ) : (
             <>
-              {' '}— current savings alone won't reach your Full FIRE number by age 100 without further
-              contributions.
+              {" "}
+              — current savings alone won't reach your Full FIRE number by age
+              100 without further contributions.
             </>
           )}
         </div>
@@ -213,18 +264,28 @@ export function FirePanel({
           Portfolio Projection vs FIRE Targets
         </h3>
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-          Your projected portfolio in today's dollars (real growth), contributing until age{' '}
-          {profile.retirementAge}. Dashed lines mark each FIRE number.
+          Your projected portfolio in today's dollars (real growth),
+          contributing until age {profile.retirementAge}. Dashed lines mark each
+          FIRE number.
         </p>
-        <div style={{ width: '100%', height: 340 }}>
+        <div style={{ width: "100%", height: 340 }}>
           <ResponsiveContainer>
-            <LineChart data={fire.projection} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
+            <LineChart
+              data={fire.projection}
+              margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
+            >
               <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
               <XAxis
                 dataKey="age"
                 stroke={axisColor}
                 tick={{ fill: axisColor, fontSize: 12 }}
-                label={{ value: 'Age', position: 'insideBottom', offset: -2, fill: axisColor, fontSize: 12 }}
+                label={{
+                  value: "Age",
+                  position: "insideBottom",
+                  offset: -2,
+                  fill: axisColor,
+                  fontSize: 12,
+                }}
               />
               <YAxis
                 stroke={axisColor}
@@ -233,20 +294,25 @@ export function FirePanel({
                 width={64}
               />
               <RTooltip
-                formatter={(value) => [fmt(Number(value)), 'Portfolio']}
+                formatter={(value) => [fmt(Number(value)), "Portfolio"]}
                 labelFormatter={(label) => `Age ${label}`}
                 contentStyle={{
-                  backgroundColor: isDarkMode ? '#1f2937' : '#ffffff',
+                  backgroundColor: isDarkMode ? "#1f2937" : "#ffffff",
                   border: `1px solid ${gridColor}`,
                   borderRadius: 8,
-                  color: isDarkMode ? '#f9fafb' : '#111827',
+                  color: isDarkMode ? "#f9fafb" : "#111827",
                 }}
               />
               <ReferenceLine
                 x={profile.retirementAge}
                 stroke={axisColor}
                 strokeDasharray="2 4"
-                label={{ value: 'Retire', position: 'top', fill: axisColor, fontSize: 11 }}
+                label={{
+                  value: "Retire",
+                  position: "top",
+                  fill: axisColor,
+                  fontSize: 11,
+                }}
               />
               {refTargets.map((t) => (
                 <ReferenceLine
@@ -256,7 +322,7 @@ export function FirePanel({
                   strokeDasharray="6 4"
                   label={{
                     value: t.label,
-                    position: 'right',
+                    position: "right",
                     fill: TARGET_COLORS[t.id] || axisColor,
                     fontSize: 11,
                   }}
@@ -296,10 +362,15 @@ export function FirePanel({
 
       {/* General advice */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Guidance For Your Plan</h3>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          Guidance For Your Plan
+        </h3>
         <ul className="space-y-3">
           {tips.map((tip, i) => (
-            <li key={i} className="flex gap-3 text-sm text-gray-700 dark:text-gray-300">
+            <li
+              key={i}
+              className="flex gap-3 text-sm text-gray-700 dark:text-gray-300"
+            >
               <span className="flex-shrink-0 mt-0.5 w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-xs font-semibold flex items-center justify-center">
                 {i + 1}
               </span>
@@ -316,52 +387,81 @@ export function FirePanel({
             Early-Retirement Access Gap
           </h3>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-            You plan to retire at {earlyAccess.retirementAge}, but some accounts aren't penalty-free
-            until age {earlyAccess.penaltyFreeAge}. You'll need to bridge {earlyAccess.yearsToBridge}{' '}
-            {earlyAccess.yearsToBridge === 1 ? 'year' : 'years'} from accessible money.
+            You plan to retire at {earlyAccess.retirementAge}, but some accounts
+            aren't penalty-free until age {earlyAccess.penaltyFreeAge}. You'll
+            need to bridge {earlyAccess.yearsToBridge}{" "}
+            {earlyAccess.yearsToBridge === 1 ? "year" : "years"} from accessible
+            money.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
             <div className="bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
-              <div className="text-xs text-gray-500 dark:text-gray-400">Accessible at retirement</div>
-              <div className="text-xl font-semibold text-gray-900 dark:text-white">{fmt(earlyAccess.accessibleBalance)}</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                Accessible at retirement
+              </div>
+              <div className="text-xl font-semibold text-gray-900 dark:text-white">
+                {fmt(earlyAccess.accessibleBalance)}
+              </div>
             </div>
             <div className="bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
-              <div className="text-xs text-gray-500 dark:text-gray-400">Locked until {earlyAccess.penaltyFreeAge}</div>
-              <div className="text-xl font-semibold text-gray-900 dark:text-white">{fmt(earlyAccess.lockedBalance)}</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                Locked until {earlyAccess.penaltyFreeAge}
+              </div>
+              <div className="text-xl font-semibold text-gray-900 dark:text-white">
+                {fmt(earlyAccess.lockedBalance)}
+              </div>
             </div>
             <div className="bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
-              <div className="text-xs text-gray-500 dark:text-gray-400">Needed to bridge the gap</div>
-              <div className="text-xl font-semibold text-gray-900 dark:text-white">{fmt(earlyAccess.bridgeNeed)}</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                Needed to bridge the gap
+              </div>
+              <div className="text-xl font-semibold text-gray-900 dark:text-white">
+                {fmt(earlyAccess.bridgeNeed)}
+              </div>
             </div>
           </div>
           <div
             className={`rounded-md p-3 text-sm ${
               earlyAccess.shortfall > 0
-                ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300'
-                : 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300'
+                ? "bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300"
+                : "bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300"
             }`}
           >
             {earlyAccess.shortfall > 0 ? (
               <>
-                Your accessible accounts fall about <span className="font-semibold">{fmt(earlyAccess.shortfall)}</span>{' '}
-                short of covering spending until age {earlyAccess.penaltyFreeAge}. Consider building taxable/Roth
-                savings, or a Roth conversion ladder / 72(t) to reach locked funds penalty-free.
+                Your accessible accounts fall about{" "}
+                <span className="font-semibold">
+                  {fmt(earlyAccess.shortfall)}
+                </span>{" "}
+                short of covering spending until age{" "}
+                {earlyAccess.penaltyFreeAge}. Consider building taxable/Roth
+                savings, or a Roth conversion ladder / 72(t) to reach locked
+                funds penalty-free.
               </>
             ) : (
               <>
-                Your accessible accounts can cover spending through the gap with about{' '}
-                <span className="font-semibold">{fmt(-earlyAccess.shortfall)}</span> to spare before locked
-                accounts open at age {earlyAccess.penaltyFreeAge}.
+                Your accessible accounts can cover spending through the gap with
+                about{" "}
+                <span className="font-semibold">
+                  {fmt(-earlyAccess.shortfall)}
+                </span>{" "}
+                to spare before locked accounts open at age{" "}
+                {earlyAccess.penaltyFreeAge}.
               </>
             )}
           </div>
-          {(earlyAccess.accessibleLabels.length > 0 || earlyAccess.lockedLabels.length > 0) && (
+          {(earlyAccess.accessibleLabels.length > 0 ||
+            earlyAccess.lockedLabels.length > 0) && (
             <div className="mt-3 text-xs text-gray-500 dark:text-gray-400">
               {earlyAccess.accessibleLabels.length > 0 && (
-                <div>Reachable early: {earlyAccess.accessibleLabels.join(', ')}</div>
+                <div>
+                  Reachable early: {earlyAccess.accessibleLabels.join(", ")}
+                </div>
               )}
               {earlyAccess.lockedLabels.length > 0 && (
-                <div>Locked until {earlyAccess.penaltyFreeAge}: {earlyAccess.lockedLabels.join(', ')}</div>
+                <div>
+                  Locked until {earlyAccess.penaltyFreeAge}:{" "}
+                  {earlyAccess.lockedLabels.join(", ")}
+                </div>
               )}
             </div>
           )}
@@ -377,38 +477,53 @@ export function FirePanel({
           <>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
               {fmt(ssCoverage.annualBenefit)}/yr in benefits
-              {ssCoverage.startAge ? ` starting at age ${ssCoverage.startAge}` : ''} covers{' '}
+              {ssCoverage.startAge
+                ? ` starting at age ${ssCoverage.startAge}`
+                : ""}{" "}
+              covers{" "}
               <span className="font-semibold text-gray-700 dark:text-gray-200">
                 {Math.round(ssCoverage.coveragePct * 100)}%
-              </span>{' '}
+              </span>{" "}
               of your {fmt(ssCoverage.spending)} spending goal.
             </p>
             <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-3 mb-4 overflow-hidden">
               <div
                 className="bg-emerald-500 h-3 rounded-full"
-                style={{ width: `${Math.min(100, Math.round(ssCoverage.coveragePct * 100))}%` }}
+                style={{
+                  width: `${Math.min(100, Math.round(ssCoverage.coveragePct * 100))}%`,
+                }}
               />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
-                <div className="text-xs text-gray-500 dark:text-gray-400">Remaining annual draw from portfolio</div>
-                <div className="text-xl font-semibold text-gray-900 dark:text-white">{fmt(ssCoverage.residualDraw)}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  Remaining annual draw from portfolio
+                </div>
+                <div className="text-xl font-semibold text-gray-900 dark:text-white">
+                  {fmt(ssCoverage.residualDraw)}
+                </div>
               </div>
               <div className="bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
-                <div className="text-xs text-gray-500 dark:text-gray-400">Portfolio needed once benefits start</div>
-                <div className="text-xl font-semibold text-gray-900 dark:text-white">{fmt(ssCoverage.residualPortfolio)}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  Portfolio needed once benefits start
+                </div>
+                <div className="text-xl font-semibold text-gray-900 dark:text-white">
+                  {fmt(ssCoverage.residualPortfolio)}
+                </div>
               </div>
             </div>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-4">
-              Benefits reduce how much your portfolio must cover from their start age. For an accurate
-              figure, use your personalized estimate at ssa.gov rather than a placeholder.
+              Benefits reduce how much your portfolio must cover from their
+              start age. For an accurate figure, use your personalized estimate
+              at ssa.gov rather than a placeholder.
             </p>
           </>
         ) : (
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            No Social Security or government benefit is modeled yet. Add one as an income stream (tagged
-            Social Security) to see how much of your spending it covers and how much your portfolio still
-            needs to fund. Your personalized estimate is at ssa.gov.
+            No Social Security or government benefit is modeled yet. Add one as
+            an income stream (tagged Social Security) to see how much of your
+            spending it covers and how much your portfolio still needs to fund.
+            Your personalized estimate is at ssa.gov.
           </p>
         )}
       </div>
@@ -416,22 +531,27 @@ export function FirePanel({
       {/* SWR sustainability */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Withdrawal-Rate Check</h3>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Withdrawal-Rate Check
+          </h3>
           <span
             className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
               swr.flagged
-                ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
-                : 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
+                ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+                : "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
             }`}
           >
-            {pct(swr.swr)} · {swr.level.replace('_', ' ')}
+            {pct(swr.swr)} · {swr.level.replace("_", " ")}
           </span>
         </div>
-        <p className="text-sm text-gray-700 dark:text-gray-300">{swr.message}</p>
+        <p className="text-sm text-gray-700 dark:text-gray-300">
+          {swr.message}
+        </p>
         {swr.flagged && (
           <p className="text-sm text-amber-700 dark:text-amber-300 mt-2">
-            For a {swr.retirementLengthYears}-year retirement, a ceiling around {pct(swr.recommendedMax)}{' '}
-            leaves more margin against a bad early sequence of returns.
+            For a {swr.retirementLengthYears}-year retirement, a ceiling around{" "}
+            {pct(swr.recommendedMax)} leaves more margin against a bad early
+            sequence of returns.
           </p>
         )}
       </div>
@@ -439,19 +559,27 @@ export function FirePanel({
       {/* Roth vs Traditional advice */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
         <div className="flex items-center justify-between mb-1">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Roth vs Traditional</h3>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Roth vs Traditional
+          </h3>
           {advice.available && (
-            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${adviceBadge.cls}`}>
+            <span
+              className={`text-xs font-semibold px-2.5 py-1 rounded-full ${adviceBadge.cls}`}
+            >
               {adviceBadge.text}
             </span>
           )}
         </div>
-        <p className="text-gray-900 dark:text-white font-medium mb-4">{advice.headline}</p>
+        <p className="text-gray-900 dark:text-white font-medium mb-4">
+          {advice.headline}
+        </p>
 
         {advice.available && (
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div className="bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
-              <div className="text-xs text-gray-500 dark:text-gray-400">Current marginal rate</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                Current marginal rate
+              </div>
               <div className="text-xl font-semibold text-gray-900 dark:text-white">
                 {pct(advice.currentMarginalRate)}
               </div>
@@ -460,7 +588,9 @@ export function FirePanel({
               </div>
             </div>
             <div className="bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
-              <div className="text-xs text-gray-500 dark:text-gray-400">Est. retirement rate</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                Est. retirement rate
+              </div>
               <div className="text-xl font-semibold text-gray-900 dark:text-white">
                 {pct(advice.retirementMarginalRate)}
               </div>
@@ -473,7 +603,10 @@ export function FirePanel({
 
         <ul className="space-y-2 mb-4">
           {advice.reasoning.map((r, i) => (
-            <li key={i} className="flex gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <li
+              key={i}
+              className="flex gap-2 text-sm text-gray-700 dark:text-gray-300"
+            >
               <span className="text-blue-500 mt-0.5">•</span>
               <span>{r}</span>
             </li>
@@ -494,8 +627,8 @@ export function FirePanel({
         )}
 
         <p className="text-xs text-gray-400 dark:text-gray-500 mt-4">
-          This is educational guidance, not financial advice. Consult a qualified professional for your
-          situation.
+          This is educational guidance, not financial advice. Consult a
+          qualified professional for your situation.
         </p>
       </div>
     </div>
@@ -516,12 +649,14 @@ function FireCard({
     <div
       className={`rounded-lg border p-4 ${
         achieved
-          ? 'border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20'
-          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'
+          ? "border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20"
+          : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
       }`}
     >
       <div className="flex items-center justify-between mb-1">
-        <span className="font-semibold text-gray-900 dark:text-white">{target.label}</span>
+        <span className="font-semibold text-gray-900 dark:text-white">
+          {target.label}
+        </span>
         {achieved ? (
           <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300">
             Achieved
@@ -532,8 +667,12 @@ function FireCard({
           </span>
         )}
       </div>
-      <div className="text-2xl font-bold text-gray-900 dark:text-white">{fmt(target.targetNumber)}</div>
-      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 mb-2">{target.description}</p>
+      <div className="text-2xl font-bold text-gray-900 dark:text-white">
+        {fmt(target.targetNumber)}
+      </div>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 mb-2">
+        {target.description}
+      </p>
       <div className="text-sm">
         {achieved ? (
           <span className="text-green-700 dark:text-green-400">
@@ -544,7 +683,9 @@ function FireCard({
             {fmt(-target.surplusOrShortfall)} to go
             {target.achieveAge !== null ? (
               <>
-                {' '}— on track by <span className="font-medium">age {target.achieveAge}</span>
+                {" "}
+                — on track by{" "}
+                <span className="font-medium">age {target.achieveAge}</span>
               </>
             ) : (
               <> — not reached by age 100 on current path</>
@@ -552,9 +693,13 @@ function FireCard({
           </span>
         )}
       </div>
-      {achieved && target.achieveAge !== null && target.achieveAge < currentAge + 1 && (
-        <div className="text-xs text-green-700 dark:text-green-400 mt-1">You're already there.</div>
-      )}
+      {achieved &&
+        target.achieveAge !== null &&
+        target.achieveAge < currentAge + 1 && (
+          <div className="text-xs text-green-700 dark:text-green-400 mt-1">
+            You're already there.
+          </div>
+        )}
     </div>
   );
 }
@@ -579,9 +724,9 @@ function ScenarioPanel({
       ? [
           ...accounts,
           {
-            id: '__scenario_extra__',
-            name: 'Extra savings (scenario)',
-            type: 'taxable',
+            id: "__scenario_extra__",
+            name: "Extra savings (scenario)",
+            type: "taxable",
             balance: 0,
             annualContribution: extraMonthly * 12,
             contributionGrowthRate: 0,
@@ -591,39 +736,50 @@ function ScenarioPanel({
       : accounts;
 
   const scenarioProfile: Profile = { ...profile, retirementAge: retireAge };
-  const scenarioAssumptions: Assumptions = { ...assumptions, baristaAnnualIncome: barista };
+  const scenarioAssumptions: Assumptions = {
+    ...assumptions,
+    baristaAnnualIncome: barista,
+  };
 
-  const result = calculateFire(scenarioAccounts, scenarioProfile, scenarioAssumptions);
+  const result = calculateFire(
+    scenarioAccounts,
+    scenarioProfile,
+    scenarioAssumptions,
+  );
   const baseline = calculateFire(accounts, profile, assumptions);
 
-  const ageText = (n: number | null) => (n === null ? 'after 100' : `age ${n}`);
+  const ageText = (n: number | null) => (n === null ? "after 100" : `age ${n}`);
   const delta = (scen: number | null, base: number | null) => {
     if (scen === null || base === null) return null;
     return scen - base;
   };
 
   const rows: { id: string; label: string }[] = [
-    { id: 'full', label: 'Full FIRE' },
-    { id: 'lean', label: 'Lean FIRE' },
-    { id: 'barista', label: 'Barista FIRE' },
+    { id: "full", label: "Full FIRE" },
+    { id: "lean", label: "Lean FIRE" },
+    { id: "barista", label: "Barista FIRE" },
   ];
 
-  const sliderClass =
-    'w-full accent-blue-600 cursor-pointer';
+  const sliderClass = "w-full accent-blue-600 cursor-pointer";
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">What-If Scenarios</h3>
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+        What-If Scenarios
+      </h3>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        Drag the sliders to test changes. These don't alter your saved plan — they only preview the effect
-        on when you'd reach each FIRE milestone (today's dollars).
+        Drag the sliders to test changes. These don't alter your saved plan —
+        they only preview the effect on when you'd reach each FIRE milestone
+        (today's dollars).
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
         <div>
           <div className="flex justify-between text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             <span>Retire at age</span>
-            <span className="text-blue-600 dark:text-blue-400">{retireAge}</span>
+            <span className="text-blue-600 dark:text-blue-400">
+              {retireAge}
+            </span>
           </div>
           <input
             type="range"
@@ -637,7 +793,9 @@ function ScenarioPanel({
         <div>
           <div className="flex justify-between text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             <span>Save extra / month</span>
-            <span className="text-blue-600 dark:text-blue-400">{fmt(extraMonthly)}</span>
+            <span className="text-blue-600 dark:text-blue-400">
+              {fmt(extraMonthly)}
+            </span>
           </div>
           <input
             type="range"
@@ -652,7 +810,9 @@ function ScenarioPanel({
         <div>
           <div className="flex justify-between text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             <span>Barista income / yr</span>
-            <span className="text-blue-600 dark:text-blue-400">{fmt(barista)}</span>
+            <span className="text-blue-600 dark:text-blue-400">
+              {fmt(barista)}
+            </span>
           </div>
           <input
             type="range"
@@ -682,19 +842,28 @@ function ScenarioPanel({
               const b = baseline.targets.find((x) => x.id === r.id)!;
               const d = delta(t.achieveAge, b.achieveAge);
               return (
-                <tr key={r.id} className="border-t border-gray-100 dark:border-gray-700/60">
+                <tr
+                  key={r.id}
+                  className="border-t border-gray-100 dark:border-gray-700/60"
+                >
                   <td className="px-3 py-2">{r.label}</td>
-                  <td className="px-3 py-2 text-right">{fmt(t.targetNumber)}</td>
                   <td className="px-3 py-2 text-right">
-                    {t.achieved ? 'already there' : ageText(t.achieveAge)}
+                    {fmt(t.targetNumber)}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    {t.achieved ? "already there" : ageText(t.achieveAge)}
                   </td>
                   <td className="px-3 py-2 text-right">
                     {d === null || d === 0 ? (
                       <span className="text-gray-400">—</span>
                     ) : d < 0 ? (
-                      <span className="text-green-600 dark:text-green-400">{d} yrs earlier</span>
+                      <span className="text-green-600 dark:text-green-400">
+                        {d} yrs earlier
+                      </span>
                     ) : (
-                      <span className="text-amber-600 dark:text-amber-400">+{d} yrs later</span>
+                      <span className="text-amber-600 dark:text-amber-400">
+                        +{d} yrs later
+                      </span>
                     )}
                   </td>
                 </tr>
@@ -705,8 +874,9 @@ function ScenarioPanel({
       </div>
 
       <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">
-        "vs now" compares the reach age against your current saved plan. Retiring earlier shortens the
-        years you contribute, so some milestones may move later.
+        "vs now" compares the reach age against your current saved plan.
+        Retiring earlier shortens the years you contribute, so some milestones
+        may move later.
       </p>
     </div>
   );
