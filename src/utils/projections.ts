@@ -9,6 +9,32 @@ import {
 import type { CountryConfig } from '../countries';
 
 /**
+ * Minimum annual contribution needed to capture the full employer match.
+ * Used as the floor when life events reduce discretionary contributions — the
+ * model never lets a life event cost you free employer money unintentionally.
+ *
+ * Returns 0 for accounts with no match, or when the account's current
+ * contribution is already below the threshold (we don't push them up).
+ */
+function matchRetentionFloor(account: Account, currentContribution: number, salaryGrowthFactor: number): number {
+  if (!account.employerMatchPercent || account.employerMatchPercent === 0) return 0;
+
+  let threshold: number;
+  if (account.employerMatchLimitType === 'salary_percent') {
+    if (!account.annualSalary || !account.employerMatchLimitPercent) return 0;
+    // Need to contribute at least this much to capture the full salary-based match cap
+    threshold = account.annualSalary * salaryGrowthFactor * account.employerMatchLimitPercent;
+  } else {
+    if (!account.employerMatchLimit) return 0;
+    // Need contribution × matchRate >= dollarCap, so min contrib = dollarCap / matchRate
+    threshold = account.employerMatchLimit / account.employerMatchPercent;
+  }
+
+  // Only protect up to what they're already contributing — don't push them above their own number
+  return Math.min(currentContribution, threshold);
+}
+
+/**
  * Return the inflation-adjusted IRS / CRA contribution limit for an account type.
  * Limits are rounded to the nearest $500 to mimic real IRS adjustment behaviour.
  */
@@ -107,8 +133,13 @@ export function calculateAccumulation(
     const age = profile.currentAge + i;
     const year = currentYear + i;
 
-    // Compute net contribution delta from recurring life events active this year
-    let contributionDelta = 0;
+    // Split life event deltas into two buckets:
+    //  deltaAll          — events marked affectsIrsMaxAccounts:true (e.g. sabbatical)
+    //  deltaDiscretionary — all other events (default; only reduces discretionary contributions)
+    // This lets users model events like sabbaticals that pause payroll deductions while
+    // keeping typical expenses (vacation, tuition) from touching automatic 401k deductions.
+    let deltaAll = 0;
+    let deltaDiscretionary = 0;
     for (const event of lifeEvents) {
       if (event.type === 'lump_sum') continue;
       const active = age >= event.startAge && (event.endAge === undefined || age <= event.endAge);
@@ -116,13 +147,23 @@ export function calculateAccumulation(
       const effectiveAmount = event.inflationAdjust
         ? event.amount * Math.pow(1 + inflationRate, age - profile.currentAge)
         : event.amount;
-      if (event.type === 'expense') contributionDelta -= effectiveAmount;
-      else contributionDelta += effectiveAmount;
+      const signed = event.type === 'expense' ? -effectiveAmount : effectiveAmount;
+      if (event.affectsIrsMaxAccounts) {
+        deltaAll += signed;
+      } else {
+        deltaDiscretionary += signed;
+      }
     }
 
-    // Life event expense/income deltas only apply to discretionary contributions.
-    // IRS-max accounts are automatic payroll deductions — they are unaffected by
-    // spending events like college tuition or vacations.
+    // Pre-compute effective base contributions for deltaAll distribution
+    // (IRS-max accounts use the current year's limit, not the stored stale value)
+    const totalAllBase = accounts.reduce((sum, a) => {
+      const base = a.useIrsMaxContribution
+        ? getIrsMaxContribution(a, countryConfig, i, inflationRate)
+        : contributions[a.id];
+      return sum + base;
+    }, 0);
+
     const discretionaryAccounts = accounts.filter(a => !a.useIrsMaxContribution);
     const discretionaryBase = discretionaryAccounts.reduce((sum, a) => sum + contributions[a.id], 0);
 
@@ -142,20 +183,33 @@ export function calculateAccumulation(
         ? getIrsMaxContribution(account, countryConfig, i, inflationRate)
         : null;
 
+      // Salary grows with contributions — needed for match floor and match calculation
+      const salaryGrowthFactor = Math.pow(1 + account.contributionGrowthRate, i);
+
       let adjustedContribution: number;
       if (irsMax !== null) {
-        // IRS-max: always contribute the inflation-grown limit regardless of life events
-        adjustedContribution = irsMax;
+        // IRS-max accounts:
+        //  - deltaDiscretionary never applies (payroll deduction, not discretionary)
+        //  - deltaAll (sabbatical-style events) reduces from the IRS limit but can't go
+        //    below the match retention floor
+        if (deltaAll !== 0) {
+          const allShare = totalAllBase > 0 ? irsMax / totalAllBase : 1 / accounts.length;
+          const floor = matchRetentionFloor(account, irsMax, salaryGrowthFactor);
+          adjustedContribution = Math.max(floor, irsMax + deltaAll * allShare);
+        } else {
+          adjustedContribution = irsMax;
+        }
       } else {
-        // Discretionary: spread the life-event delta across non-IRS-max accounts
-        const accountShare = discretionaryBase > 0
+        // Discretionary accounts: apply both deltas, floor at match retention threshold
+        const allShare  = totalAllBase > 0 ? currentContribution / totalAllBase : 1 / accounts.length;
+        const discShare = discretionaryBase > 0
           ? currentContribution / discretionaryBase
           : discretionaryAccounts.length > 0 ? 1 / discretionaryAccounts.length : 0;
-        adjustedContribution = Math.max(0, currentContribution + contributionDelta * accountShare);
+        const raw = currentContribution + deltaAll * allShare + deltaDiscretionary * discShare;
+        const floor = matchRetentionFloor(account, currentContribution, salaryGrowthFactor);
+        adjustedContribution = Math.max(floor, raw);
       }
 
-      // Salary grows at the same rate as contributions (both are driven by compensation).
-      const salaryGrowthFactor = Math.pow(1 + account.contributionGrowthRate, i);
       const employerMatch = calculateEmployerMatch(account, adjustedContribution, salaryGrowthFactor);
       const totalContribution = adjustedContribution + employerMatch;
 

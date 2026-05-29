@@ -49,6 +49,7 @@ export interface LifeEvent {
   startAge: number;
   endAge?: number;         // omit for lump_sum and permanent changes
   inflationAdjust: boolean;
+  affectsIrsMaxAccounts?: boolean; // default false — when true, expense also reduces IRS-maxed contributions
 }
 
 export interface AccountWithdrawalRules {

@@ -368,6 +368,30 @@ export function LifeEventForm({ lifeEvent, profile, onSave, onCancel }: LifeEven
         </label>
       </div>
 
+      {/* Affects maxed-out retirement contributions — expense only */}
+      {formData.type === 'expense' && (
+        <div>
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!!formData.affectsIrsMaxAccounts}
+              onChange={(e) => setFormData(prev => ({ ...prev, affectsIrsMaxAccounts: e.target.checked }))}
+              className="mt-0.5"
+            />
+            <div>
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Reduces maxed-out retirement contributions
+              </span>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                By default, expenses come from take-home pay and never reduce automatic 401k/IRS-max deductions.
+                Check this for events that would actually cause you to lower your payroll deduction — e.g. a sabbatical or extended leave.
+                Contributions will still retain the minimum needed to capture your full employer match.
+              </p>
+            </div>
+          </label>
+        </div>
+      )}
+
       {/* Actions */}
       <div className="flex justify-end gap-3 pt-4">
         <button
