@@ -83,9 +83,17 @@ export interface Assumptions {
   retirementReturnRate: number; // as decimal
   annualSpendingGoal?: number; // desired annual retirement spending, today's dollars (drives FIRE numbers)
   baristaAnnualIncome?: number; // expected part-time income for Barista FIRE, today's dollars
+  leanMultiplier?: number; // fraction of spending for Lean FIRE, e.g. 0.7
+  fatMultiplier?: number;  // fraction of spending for Fat FIRE, e.g. 1.6
 }
 
 // ---- FIRE (Financial Independence / Retire Early) ----
+
+export interface FireProjectionPoint {
+  age: number;
+  balance: number;
+  contributing: boolean;
+}
 
 export type FireTargetId = 'full' | 'lean' | 'fat' | 'coast' | 'barista';
 
@@ -107,6 +115,7 @@ export interface FireResult {
   yearsToRetirement: number;
   coastAchieveAge: number | null; // age you'd hit the full number with NO further contributions
   targets: FireTarget[];
+  projection: FireProjectionPoint[];
 }
 
 // ---- Roth vs Traditional advice ----
