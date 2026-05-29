@@ -9,20 +9,51 @@ import {
 import type { CountryConfig } from '../countries';
 
 /**
- * Calculate employer match for accounts that support it (401k, employer RRSP)
+ * Return the inflation-adjusted IRS / CRA contribution limit for an account type.
+ * Limits are rounded to the nearest $500 to mimic real IRS adjustment behaviour.
  */
-function calculateEmployerMatch(account: Account): number {
-  const supportsMatch = is401k(account.type) || account.type === 'employer_rrsp';
+/** Extract a simple numeric limit from the ContributionLimits union value. */
+function numericLimit(raw: number | { percentage?: number; max?: number; annual?: number; lifetime?: number } | undefined): number {
+  if (!raw) return 0;
+  if (typeof raw === 'number') return raw;
+  return raw.annual ?? raw.max ?? 0;
+}
 
-  if (!supportsMatch || !account.employerMatchPercent || !account.employerMatchLimit) {
-    return 0;
+function getIrsMaxContribution(
+  account: Account,
+  countryConfig: CountryConfig,
+  yearIndex: number,
+  inflationRate: number,
+): number {
+  const limits = countryConfig.getContributionLimits();
+  const baseLimit = numericLimit(limits[account.type]);
+  if (baseLimit === 0) return 0;
+  const grown = baseLimit * Math.pow(1 + inflationRate, yearIndex);
+  return Math.round(grown / 500) * 500;
+}
+
+/**
+ * Calculate employer match for accounts that support it.
+ *
+ * Two cap modes:
+ *  - 'salary_percent': cap = annualSalary × employerMatchLimitPercent (grows with salary)
+ *  - 'dollar' (default / legacy): cap applied to the match dollar amount directly
+ *
+ * Formula (both modes): min(contribution, matchCap) × matchRate
+ */
+function calculateEmployerMatch(account: Account, effectiveContribution: number): number {
+  const supportsMatch = is401k(account.type) || account.type === 'employer_rrsp';
+  if (!supportsMatch || !account.employerMatchPercent) return 0;
+
+  if (account.employerMatchLimitType === 'salary_percent') {
+    if (!account.annualSalary || !account.employerMatchLimitPercent) return 0;
+    const salaryMatchCap = account.annualSalary * account.employerMatchLimitPercent;
+    return Math.min(effectiveContribution, salaryMatchCap) * account.employerMatchPercent;
   }
 
-  // Match is the lesser of:
-  // 1. The match percent times the contribution
-  // 2. The match limit
-  const matchAmount = account.annualContribution * account.employerMatchPercent;
-  return Math.min(matchAmount, account.employerMatchLimit);
+  // Legacy dollar cap: min(contribution × matchRate, dollarLimit)
+  if (!account.employerMatchLimit) return 0;
+  return Math.min(effectiveContribution * account.employerMatchPercent, account.employerMatchLimit);
 }
 
 /**
@@ -44,7 +75,10 @@ export function calculateAccumulation(
 
   accounts.forEach(account => {
     balances[account.id] = account.balance;
-    contributions[account.id] = account.annualContribution;
+    // IRS-max accounts: seed with the current-year limit; the loop overwrites each year.
+    contributions[account.id] = account.useIrsMaxContribution
+      ? getIrsMaxContribution(account, countryConfig, 0, inflationRate)
+      : account.annualContribution;
   });
 
   const yearlyBalances: YearlyAccountBalance[] = [];
@@ -86,21 +120,27 @@ export function calculateAccumulation(
       // 1. Apply investment return to existing balance
       const balanceAfterReturn = currentBalance * (1 + account.returnRate);
 
-      // 2. Add contribution adjusted for life events (proportional to account's share)
-      const accountShare = totalBaseContribution > 0 ? currentContribution / totalBaseContribution : 1 / accounts.length;
-      const adjustedContribution = Math.max(0, currentContribution + contributionDelta * accountShare);
+      // 2. Effective contribution for this year
+      // IRS-max accounts recalculate the limit fresh each year (ignore stored growth).
+      const irsMax = account.useIrsMaxContribution
+        ? getIrsMaxContribution(account, countryConfig, i, inflationRate)
+        : null;
+      const baseForYear = irsMax !== null ? irsMax : currentContribution;
 
-      const employerMatch = calculateEmployerMatch({
-        ...account,
-        annualContribution: adjustedContribution,
-      });
+      const accountShare = totalBaseContribution > 0 ? currentContribution / totalBaseContribution : 1 / accounts.length;
+      const adjustedContribution = Math.max(0, baseForYear + contributionDelta * accountShare);
+
+      const employerMatch = calculateEmployerMatch(account, adjustedContribution);
       const totalContribution = adjustedContribution + employerMatch;
 
       // Update balance
       balances[account.id] = balanceAfterReturn + totalContribution;
 
-      // 3. Grow contribution for next year (use original, not adjusted — adjustment is transient)
-      contributions[account.id] = currentContribution * (1 + account.contributionGrowthRate);
+      // 3. Grow stored contribution for next year.
+      // IRS-max accounts: no-op — the limit is recomputed fresh each loop iteration.
+      if (irsMax === null) {
+        contributions[account.id] = currentContribution * (1 + account.contributionGrowthRate);
+      }
     });
 
     // Apply lump_sum life events: subtract from portfolio balance proportionally
@@ -172,7 +212,9 @@ export function getBalanceAtAge(
  */
 export function calculateTotalContributions(
   accounts: Account[],
-  profile: Profile
+  profile: Profile,
+  countryConfig?: CountryConfig,
+  inflationRate = 0.03,
 ): Record<string, number> {
   const yearsToRetirement = profile.retirementAge - profile.currentAge;
   const totals: Record<string, number> = {};
@@ -182,12 +224,14 @@ export function calculateTotalContributions(
     let yearlyContribution = account.annualContribution;
 
     for (let i = 0; i < yearsToRetirement; i++) {
-      const employerMatch = calculateEmployerMatch({
-        ...account,
-        annualContribution: yearlyContribution,
-      });
-      totalContribution += yearlyContribution + employerMatch;
-      yearlyContribution *= (1 + account.contributionGrowthRate);
+      const effectiveContrib = account.useIrsMaxContribution && countryConfig
+        ? getIrsMaxContribution(account, countryConfig, i, inflationRate)
+        : yearlyContribution;
+      const employerMatch = calculateEmployerMatch(account, effectiveContrib);
+      totalContribution += effectiveContrib + employerMatch;
+      if (!account.useIrsMaxContribution) {
+        yearlyContribution *= (1 + account.contributionGrowthRate);
+      }
     }
 
     totals[account.id] = totalContribution;

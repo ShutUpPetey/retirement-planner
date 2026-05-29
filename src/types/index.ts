@@ -69,8 +69,14 @@ export interface Account {
   annualContribution: number;
   contributionGrowthRate: number; // as decimal, e.g., 0.03
   returnRate: number; // as decimal
-  employerMatchPercent?: number; // 401k only, as decimal
-  employerMatchLimit?: number; // 401k only, dollar amount
+  // Employer match (401k / employer RRSP)
+  employerMatchPercent?: number;     // match rate as decimal, e.g. 0.5 = 50¢ per $1
+  employerMatchLimit?: number;       // dollar cap on employer contribution (legacy)
+  employerMatchLimitType?: 'dollar' | 'salary_percent'; // how the cap is expressed
+  employerMatchLimitPercent?: number; // cap as % of salary, e.g. 0.05 = 5% of salary
+  annualSalary?: number;             // gross salary; used for salary_percent match cap
+  // IRS / CRA contribution limits
+  useIrsMaxContribution?: boolean;   // replace annualContribution with inflation-adjusted IRS max each year
   withdrawalRules?: AccountWithdrawalRules;  // Optional for backwards compatibility
 }
 
