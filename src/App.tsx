@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { Account, Profile, Assumptions, IncomeStream } from "./types";
 import {
   DEFAULT_PROFILE,
@@ -31,6 +31,9 @@ import {
 import { DataTableAccumulation } from "./components/DataTableAccumulation";
 import { DataTableWithdrawal } from "./components/DataTableWithdrawal";
 import { OnboardingWizard } from "./components/OnboardingWizard";
+import { ChartTimeline } from "./components/ChartTimeline";
+import { deriveMilestones } from "./utils/milestones";
+import { calculateFire, calculateEarlyAccess } from "./utils/fire";
 import { v4 as uuidv4 } from "uuid";
 
 // Default accounts for US
@@ -190,6 +193,28 @@ function AppContent() {
     countryConfig,
     incomeStreams,
   );
+
+  const milestones = useMemo(() => {
+    const fire = calculateFire(accounts, profile, assumptions);
+    const earlyAccess = calculateEarlyAccess(
+      accounts,
+      profile,
+      assumptions,
+      countryConfig,
+      incomeStreams,
+      accumulation,
+    );
+    return deriveMilestones(
+      profile,
+      accounts,
+      accumulation,
+      retirement,
+      fire,
+      earlyAccess,
+      incomeStreams,
+      countryConfig,
+    );
+  }, [accounts, profile, assumptions, countryConfig, incomeStreams, accumulation, retirement]);
 
   const handleAddAccount = (account: Account) => {
     setAccounts((prev) => [...prev, account]);
@@ -554,6 +579,21 @@ function AppContent() {
                     accumulationResult={accumulation}
                     retirementResult={retirement}
                   />
+
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+                      Plan Timeline
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                      Key milestones across your plan. Hover a marker for details.
+                    </p>
+                    <ChartTimeline
+                      milestones={milestones}
+                      startAge={profile.currentAge}
+                      endAge={profile.lifeExpectancy}
+                      isDarkMode={isDarkMode}
+                    />
+                  </div>
 
                   <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">

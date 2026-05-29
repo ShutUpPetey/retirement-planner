@@ -212,6 +212,20 @@ export interface RetirementResult {
   accountDepletionAges: Record<string, number | null>; // accountId -> age when depleted
 }
 
+// ---- Milestone timeline ----
+
+export type MilestoneCategory = 'work' | 'retirement' | 'benefits' | 'portfolio' | 'tax';
+
+export interface Milestone {
+  age: number;
+  label: string;
+  category: MilestoneCategory;
+  /** Optional secondary detail shown on hover */
+  detail?: string;
+  /** Warning-level milestone (e.g. portfolio depletion) */
+  isWarning?: boolean;
+}
+
 export interface AppState {
   accounts: Account[];
   profile: Profile;
