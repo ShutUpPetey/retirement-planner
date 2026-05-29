@@ -16,31 +16,25 @@ interface MathDebugPanelProps {
   countryConfig: CountryConfig;
 }
 
+// ── formatters ────────────────────────────────────────────────────────────────
 const fmt  = (v: number) => v.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 const pct  = (v: number) => `${(v * 100).toFixed(1)}%`;
-const fmtN = (v: number, d = 0) => v.toLocaleString('en-US', { maximumFractionDigits: d });
+const fmtM = (v: number, d = 3) => v.toFixed(d);
 
-// ── helpers ──────────────────────────────────────────────────────────────────
-
-function getIrsLimit(account: Account, countryConfig: CountryConfig): number {
+// ── helpers ───────────────────────────────────────────────────────────────────
+function getIrsBase(account: Account, countryConfig: CountryConfig): number {
   const raw = countryConfig.getContributionLimits()[account.type];
   if (!raw) return 0;
   return typeof raw === 'number' ? raw : (raw.annual ?? raw.max ?? 0);
 }
 
-function computeMatch(account: Account, effectiveContrib: number): number {
-  if (!account.employerMatchPercent) return 0;
-  if (account.employerMatchLimitType === 'salary_percent') {
-    if (!account.annualSalary || !account.employerMatchLimitPercent) return 0;
-    return Math.min(effectiveContrib, account.annualSalary * account.employerMatchLimitPercent)
-      * account.employerMatchPercent;
-  }
-  if (!account.employerMatchLimit) return 0;
-  return Math.min(effectiveContrib * account.employerMatchPercent, account.employerMatchLimit);
+function irsMaxForYear(account: Account, countryConfig: CountryConfig, yearIndex: number, inflationRate: number): number {
+  const base = getIrsBase(account, countryConfig);
+  if (!base) return 0;
+  return Math.round(base * Math.pow(1 + inflationRate, yearIndex) / 500) * 500;
 }
 
 // ── sub-components ────────────────────────────────────────────────────────────
-
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2">
@@ -52,119 +46,123 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function FormulaRow({ label, formula, result, note, indent = false }: {
-  label: string; formula?: string; result: string; note?: string; indent?: boolean;
+function Row({ label, formula, result, note, dim }: {
+  label: string; formula?: string; result: string; note?: string; dim?: boolean;
 }) {
   return (
-    <div className={`flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm ${indent ? 'ml-4' : ''}`}>
-      <span className="text-gray-500 dark:text-gray-400 min-w-[170px]">{label}</span>
-      {formula && <span className="text-gray-400 dark:text-gray-500 font-mono text-xs">{formula}</span>}
-      <span className="font-semibold text-gray-900 dark:text-white ml-auto">{result}</span>
-      {note && <span className="w-full ml-0 text-xs text-gray-400 dark:text-gray-500">{note}</span>}
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
+      <span className={`min-w-[190px] ${dim ? 'text-gray-400 dark:text-gray-500' : 'text-gray-500 dark:text-gray-400'}`}>{label}</span>
+      {formula && <span className="text-gray-400 dark:text-gray-500 font-mono text-xs break-all">{formula}</span>}
+      <span className={`font-semibold ml-auto ${dim ? 'text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-white'}`}>{result}</span>
+      {note && <span className="w-full text-xs text-gray-400 dark:text-gray-500">{note}</span>}
     </div>
   );
 }
 
-function Divider() {
-  return <hr className="border-gray-100 dark:border-gray-700" />;
+function Divider() { return <hr className="border-gray-100 dark:border-gray-700" />; }
+
+function Card({ children }: { children: React.ReactNode }) {
+  return <div className="space-y-1.5 bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">{children}</div>;
 }
 
-// ── main component ────────────────────────────────────────────────────────────
-
+// ── main ──────────────────────────────────────────────────────────────────────
 export function MathDebugPanel({
-  accounts, profile, assumptions, incomeStreams: _incomeStreams,
+  accounts, profile, assumptions, incomeStreams: _streams,
   accumulation, retirement, countryConfig,
 }: MathDebugPanelProps) {
   const [open, setOpen] = useState(false);
+  const [selectedAge, setSelectedAge] = useState(profile.currentAge + 1);
 
-  const irsLimitLabel = profile.country === 'CA' ? 'CRA limit' : 'IRS limit';
+  const currentCalYear = new Date().getFullYear();
+  const irsLabel = profile.country === 'CA' ? 'CRA limit' : 'IRS limit';
+
+  // ── derived from slider ──────────────────────────────────────────────────
+  const yearIndex    = selectedAge - profile.currentAge;
+  const calYear      = currentCalYear + yearIndex;
+  const inflFactor   = Math.pow(1 + assumptions.inflationRate, yearIndex);
   const yearsToRetirement = Math.max(0, profile.retirementAge - profile.currentAge);
-  const inflationAtRetirement = Math.pow(1 + assumptions.inflationRate, yearsToRetirement);
+  const isAccum      = selectedAge < profile.retirementAge;
+  const isRetired    = selectedAge >= profile.retirementAge;
+  const retireYrIdx  = selectedAge - profile.retirementAge; // only valid when isRetired
 
-  // ── Section 1: per-account contribution & match ──────────────────────────
-  const accountDetails = useMemo(() => accounts.map(account => {
-    const irsBase = getIrsLimit(account, countryConfig);
-    const effectiveContrib = account.useIrsMaxContribution && irsBase > 0 ? irsBase : account.annualContribution;
-    const match = computeMatch(account, effectiveContrib);
-    const hasMatch = match > 0;
-    const total = effectiveContrib + match;
-    const isMaxed = !!account.useIrsMaxContribution && irsBase > 0;
-    const isSalaryPct = account.employerMatchLimitType === 'salary_percent';
-
-    let matchFormula = '';
-    if (account.employerMatchPercent && (account.employerMatchLimit || (isSalaryPct && account.annualSalary && account.employerMatchLimitPercent))) {
-      if (isSalaryPct) {
-        const cap = (account.annualSalary! * account.employerMatchLimitPercent!);
-        matchFormula = `min(${fmt(effectiveContrib)}, ${fmt(account.annualSalary!)} × ${pct(account.employerMatchLimitPercent!)}) × ${pct(account.employerMatchPercent)} = min(${fmt(effectiveContrib)}, ${fmt(cap)}) × ${pct(account.employerMatchPercent)}`;
-      } else {
-        matchFormula = `min(${fmt(effectiveContrib)} × ${pct(account.employerMatchPercent)}, ${fmt(account.employerMatchLimit!)}) = min(${fmt(effectiveContrib * account.employerMatchPercent)}, ${fmt(account.employerMatchLimit!)})`;
-      }
-    }
-
-    const treatLabel: Record<string, string> = {
-      pretax: 'Pre-tax', roth: 'Roth', taxable: 'Taxable', hsa: 'HSA',
-    };
-
-    return { account, effectiveContrib, match, hasMatch, total, isMaxed, matchFormula, irsBase, treatLabel };
-  }), [accounts, countryConfig]);
-
-  // ── Section 2: year-1 accumulation walk-through ───────────────────────────
-  const yr1 = useMemo(() => {
-    if (!accumulation.yearlyBalances[1]) return null;
-    const yr = accumulation.yearlyBalances[1];
-
-    return accounts.map(acct => {
-      const prevBal = accumulation.yearlyBalances[0]?.balances[acct.id] ?? acct.balance;
-      const newBal  = yr.balances[acct.id] ?? 0;
-      const irsBase = getIrsLimit(acct, countryConfig);
-      const contrib  = acct.useIrsMaxContribution && irsBase > 0 ? irsBase : acct.annualContribution;
-      const match    = computeMatch(acct, contrib);
-      const growth   = (prevBal + contrib + match) * acct.returnRate;
-      return { acct, prevBal, contrib, match, growth, newBal };
-    });
-  }, [accounts, accumulation, countryConfig]);
-
-  // ── Section 3: retirement spending target ────────────────────────────────
-  const spendingMath = useMemo(() => {
-    const isGoal = assumptions.spendingMode === 'goal';
-    const totalAtRetirement = accumulation.totalAtRetirement;
-    if (isGoal && assumptions.annualSpendingGoal) {
-      const nominalAtRetirement = assumptions.annualSpendingGoal * inflationAtRetirement;
-      return {
-        mode: 'goal' as const,
-        goal: assumptions.annualSpendingGoal,
-        nominalAtRetirement,
-        inflationAtRetirement,
-      };
-    }
-    return {
-      mode: 'swr' as const,
-      totalAtRetirement,
-      swr: assumptions.safeWithdrawalRate,
-      annualSpend: totalAtRetirement * assumptions.safeWithdrawalRate,
-    };
-  }, [assumptions, accumulation, inflationAtRetirement]);
-
-  // ── Section 4: year-1 retirement tax breakdown ────────────────────────────
-  const retireTax1 = useMemo(() => {
-    const yr = retirement.yearlyWithdrawals[0];
+  // ── accumulation snapshot for selected age ─────────────────────────────
+  const accumSnap = useMemo(() => {
+    if (!isAccum) return null;
+    const yr     = accumulation.yearlyBalances.find(y => y.age === selectedAge);
+    const prevYr = accumulation.yearlyBalances.find(y => y.age === selectedAge - 1);
     if (!yr) return null;
 
-    const filingStatus = profile.filingStatus ?? 'single';
-    const stdDeduction = getStandardDeduction(filingStatus);
-    const ordinaryIncome = yr.totalWithdrawal * 0.8 + yr.governmentBenefitIncome * 0.85 + yr.incomeStreamIncome * 0.85;
-    const taxableOrdinary = Math.max(0, ordinaryIncome - stdDeduction);
-    const fedTax = yr.federalTax;
-    const stateTax = yr.stateTax;
-    const effectiveRate = yr.grossIncome > 0 ? yr.totalTax / yr.grossIncome : 0;
+    return accounts.map(account => {
+      const prevBal = prevYr?.balances[account.id] ?? account.balance;
+      const newBal  = yr.balances[account.id] ?? 0;
 
-    return { yr, stdDeduction, taxableOrdinary, fedTax, stateTax, effectiveRate, ordinaryIncome };
-  }, [retirement, profile]);
+      // Contribution for this year
+      const irsMax = irsMaxForYear(account, countryConfig, yearIndex, assumptions.inflationRate);
+      const irsBase = getIrsBase(account, countryConfig);
+      const grownContrib = account.annualContribution * Math.pow(1 + account.contributionGrowthRate, yearIndex);
+      const contrib = account.useIrsMaxContribution && irsMax > 0 ? irsMax : grownContrib;
+
+      // Salary and match
+      const salaryFactor = Math.pow(1 + account.contributionGrowthRate, yearIndex);
+      const effectiveSalary = account.annualSalary ? account.annualSalary * salaryFactor : null;
+
+      let match = 0;
+      let matchFormula = '';
+      let matchNote = '';
+
+      if (account.employerMatchPercent && account.employerMatchPercent > 0) {
+        if (account.employerMatchLimitType === 'salary_percent' && effectiveSalary && account.employerMatchLimitPercent) {
+          const cap = effectiveSalary * account.employerMatchLimitPercent;
+          match = Math.min(contrib, cap) * account.employerMatchPercent;
+          matchFormula = `min(${fmt(contrib)}, ${fmt(effectiveSalary)} × ${pct(account.employerMatchLimitPercent)}) × ${pct(account.employerMatchPercent)} = min(${fmt(contrib)}, ${fmt(cap)}) × ${pct(account.employerMatchPercent)}`;
+          matchNote = yearIndex > 0
+            ? `Salary grown from ${fmt(account.annualSalary!)} at ${pct(account.contributionGrowthRate)}/yr × ${yearIndex} yrs`
+            : '';
+        } else if (account.employerMatchLimit) {
+          match = Math.min(contrib * account.employerMatchPercent, account.employerMatchLimit);
+          matchFormula = `min(${fmt(contrib)} × ${pct(account.employerMatchPercent)}, ${fmt(account.employerMatchLimit)})`;
+          matchNote = 'Dollar cap is fixed — same every year';
+        }
+      }
+
+      const growth = (prevBal + contrib + match) * account.returnRate;
+
+      return {
+        account, prevBal, newBal,
+        contrib, grownContrib, irsMax, irsBase,
+        effectiveSalary, match, matchFormula, matchNote,
+        growth,
+      };
+    });
+  }, [isAccum, selectedAge, yearIndex, accounts, accumulation, countryConfig, assumptions]);
+
+  // ── retirement snapshot for selected age ───────────────────────────────
+  const retireSnap = useMemo(() => {
+    if (!isRetired) return null;
+    const yr = retirement.yearlyWithdrawals.find(y => y.age === selectedAge);
+    if (!yr) return null;
+
+    const filingStatus   = profile.filingStatus ?? 'single';
+    const baseDeduction  = getStandardDeduction(filingStatus);
+    const stdDeduction   = assumptions.adjustTaxBracketsForInflation !== false
+      ? baseDeduction * inflFactor
+      : baseDeduction;
+    const effectiveRate  = yr.grossIncome > 0 ? yr.totalTax / yr.grossIncome : 0;
+
+    // Initial spending target (year 1 of retirement)
+    const yr1 = retirement.yearlyWithdrawals[0];
+    const initialSpend = yr1?.targetSpending ?? 0;
+    const retireInflFactor = Math.pow(1 + assumptions.inflationRate, retireYrIdx);
+
+    return { yr, stdDeduction, effectiveRate, initialSpend, retireInflFactor, baseDeduction };
+  }, [isRetired, selectedAge, retirement, profile, assumptions, inflFactor, retireYrIdx]);
 
   if (!accumulation.yearlyBalances.length) return null;
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+
+      {/* ── toggle button ── */}
       <button
         onClick={() => setOpen(v => !v)}
         className="w-full px-4 py-3 flex justify-between items-center hover:bg-gray-50 dark:hover:bg-gray-750 rounded-t-lg"
@@ -176,189 +174,219 @@ export function MathDebugPanel({
           </svg>
           Show the math
         </div>
-        <svg
-          className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
-          fill="none" stroke="currentColor" viewBox="0 0 24 24"
-        >
+        <svg className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
+          fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
 
       {open && (
-        <div className="px-4 pb-5 pt-1 space-y-5 border-t border-gray-100 dark:border-gray-700">
+        <div className="px-4 pb-5 pt-2 space-y-6 border-t border-gray-100 dark:border-gray-700">
 
-          {/* ── 1. Contributions & match ── */}
-          <Section title="💰 Contributions & Employer Match (current year)">
-            {accountDetails.map(({ account, effectiveContrib, match, hasMatch, total, isMaxed, matchFormula, irsBase, treatLabel }) => (
-              <div key={account.id} className="space-y-1 bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
-                <p className="text-sm font-medium text-gray-900 dark:text-white mb-2">
-                  {account.name}
-                  <span className="ml-2 text-xs font-normal text-gray-500 dark:text-gray-400">
-                    ({treatLabel[getTaxTreatment(account.type)] ?? getTaxTreatment(account.type)})
-                  </span>
-                </p>
+          {/* ── Year selector ── */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Show calculations for:
+              </span>
+              <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                Age {selectedAge} · {calYear}
+              </span>
+            </div>
 
-                <FormulaRow
-                  label="Your contribution"
-                  result={fmt(effectiveContrib)}
-                  note={isMaxed
-                    ? `${irsLimitLabel} max (${fmt(irsBase)}) — grows with inflation each year`
-                    : undefined}
-                />
+            <input
+              type="range"
+              min={profile.currentAge}
+              max={profile.lifeExpectancy}
+              step={1}
+              value={selectedAge}
+              onChange={e => setSelectedAge(Number(e.target.value))}
+              className="w-full accent-blue-600"
+            />
 
-                {hasMatch ? (
-                  <>
-                    <FormulaRow
-                      label="Employer match (year 1)"
-                      formula={matchFormula}
-                      result={fmt(match)}
-                      note={account.employerMatchLimitType === 'salary_percent'
-                        ? `Salary cap grows at ${pct(account.contributionGrowthRate)} each year (same as contribution growth)`
-                        : 'Dollar cap is fixed — stays this amount every year'}
+            <div className="flex justify-between text-xs text-gray-400 dark:text-gray-500">
+              <span>Age {profile.currentAge} (now)</span>
+              <span>Age {profile.retirementAge} (retire)</span>
+              <span>Age {profile.lifeExpectancy}</span>
+            </div>
+
+            {/* Context pill */}
+            <div className={`inline-flex flex-wrap gap-2 text-xs font-medium px-3 py-1.5 rounded-full ${
+              isAccum
+                ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                : 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+            }`}>
+              <span>{isAccum ? '📈 Accumulation phase' : '🏖 Retirement phase'}</span>
+              <span>·</span>
+              <span>{yearIndex === 0 ? 'today' : `${yearIndex} yr${yearIndex !== 1 ? 's' : ''} from now`}</span>
+              <span>·</span>
+              <span>Inflation × {fmtM(inflFactor)} ({pct(inflFactor - 1)} cumulative)</span>
+            </div>
+          </div>
+
+          {/* ── Accumulation content ── */}
+          {isAccum && accumSnap && (
+            <>
+              <Section title={`💰 Contributions & Match — Age ${selectedAge} (${calYear})`}>
+                {accumSnap.map(({ account, contrib, grownContrib, irsMax, irsBase, effectiveSalary, match, matchFormula, matchNote }) => (
+                  <Card key={account.id}>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">
+                      {account.name}
+                      <span className="ml-2 text-xs font-normal text-gray-400 dark:text-gray-500">
+                        {getTaxTreatment(account.type)}
+                      </span>
+                    </p>
+
+                    {account.useIrsMaxContribution && irsBase > 0 ? (
+                      <Row
+                        label={`${irsLabel} max in ${calYear}`}
+                        formula={`${fmt(irsBase)} × (1 + ${pct(assumptions.inflationRate)})^${yearIndex} → rounded to $500`}
+                        result={fmt(irsMax)}
+                      />
+                    ) : (
+                      <Row
+                        label="Contribution this year"
+                        formula={yearIndex > 0
+                          ? `${fmt(account.annualContribution)} × (1 + ${pct(account.contributionGrowthRate)})^${yearIndex}`
+                          : undefined}
+                        result={fmt(grownContrib)}
+                        note={yearIndex > 0 ? `Started at ${fmt(account.annualContribution)}/yr, grown at ${pct(account.contributionGrowthRate)}/yr` : undefined}
+                      />
+                    )}
+
+                    {account.employerMatchPercent && account.employerMatchPercent > 0 && (
+                      <>
+                        {account.employerMatchLimitType === 'salary_percent' && account.annualSalary && account.employerMatchLimitPercent && effectiveSalary ? (
+                          <Row
+                            label={`Salary in ${calYear}`}
+                            formula={yearIndex > 0
+                              ? `${fmt(account.annualSalary)} × (1 + ${pct(account.contributionGrowthRate)})^${yearIndex}`
+                              : undefined}
+                            result={fmt(effectiveSalary)}
+                            note={matchNote}
+                          />
+                        ) : null}
+
+                        <Row
+                          label="Employer match"
+                          formula={matchFormula}
+                          result={match > 0 ? fmt(match) : '—'}
+                          note={match === 0 && !matchFormula ? 'Enter match cap to calculate' : undefined}
+                        />
+                      </>
+                    )}
+
+                    {match > 0 && (
+                      <>
+                        <Divider />
+                        <Row label="Total going in" result={fmt(contrib + match)} />
+                      </>
+                    )}
+                  </Card>
+                ))}
+              </Section>
+
+              <Section title={`📈 Balance Walk-through — Age ${selectedAge}`}>
+                {accumSnap.map(({ account, prevBal, contrib, match, growth, newBal }) => (
+                  <Card key={account.id}>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">{account.name}</p>
+                    <Row label="Starting balance" result={fmt(prevBal)} />
+                    <Row label="+ Your contribution" result={fmt(contrib)} />
+                    {match > 0 && <Row label="+ Employer match" result={fmt(match)} />}
+                    <Row
+                      label={`× ${pct(account.returnRate)} investment return`}
+                      formula={`(${fmt(prevBal)} + ${fmt(contrib)}${match > 0 ? ` + ${fmt(match)}` : ''}) × ${pct(account.returnRate)}`}
+                      result={fmt(growth)}
                     />
                     <Divider />
-                    <FormulaRow
-                      label="Total into account"
-                      result={fmt(total)}
-                    />
-                  </>
-                ) : (
-                  !account.employerMatchPercent ? (
-                    <FormulaRow label="Employer match" result="—" note="Not applicable for this account type" />
-                  ) : (
-                    <FormulaRow label="Employer match" result={fmt(0)} note="Fill in match cap to calculate" />
-                  )
-                )}
-              </div>
-            ))}
-          </Section>
+                    <Row label="End-of-year balance" result={fmt(newBal)} />
+                  </Card>
+                ))}
+              </Section>
+            </>
+          )}
 
-          {/* ── 2. Year-1 growth walk-through ── */}
-          {yr1 && (
-            <Section title="📈 Year 1 Growth Walk-through (age {profile.currentAge} → {profile.currentAge + 1})">
-              {yr1.map(({ acct, prevBal, contrib, match, growth, newBal }) => (
-                <div key={acct.id} className="space-y-1 bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white mb-2">{acct.name}</p>
-                  <FormulaRow label="Starting balance" result={fmt(prevBal)} />
-                  <FormulaRow label="+ Your contribution" result={fmt(contrib)} />
-                  {match > 0 && <FormulaRow label="+ Employer match" result={fmt(match)} />}
-                  <FormulaRow
-                    label={`× ${pct(acct.returnRate)} return`}
-                    formula={`(${fmt(prevBal)} + ${fmt(contrib)}${match > 0 ? ` + ${fmt(match)}` : ''}) × ${pct(acct.returnRate)}`}
-                    result={fmt(growth)}
+          {/* ── Retirement content ── */}
+          {isRetired && retireSnap && (
+            <>
+              <Section title={`🎯 Spending Target — Age ${selectedAge} (${calYear})`}>
+                <Card>
+                  <Row
+                    label="Year-1 retirement spend"
+                    result={fmt(retireSnap.initialSpend)}
+                    note={`Set at age ${profile.retirementAge} based on ${assumptions.spendingMode === 'goal' ? 'spending goal' : 'portfolio × SWR'}`}
+                  />
+                  {retireYrIdx > 0 && (
+                    <Row
+                      label={`× ${retireYrIdx} yrs of inflation`}
+                      formula={`${fmt(retireSnap.initialSpend)} × (1 + ${pct(assumptions.inflationRate)})^${retireYrIdx}`}
+                      result={fmt(retireSnap.initialSpend * retireSnap.retireInflFactor)}
+                    />
+                  )}
+                  <Divider />
+                  <Row label="Target spending this year" result={fmt(retireSnap.yr.targetSpending)} />
+                </Card>
+              </Section>
+
+              <Section title={`🧾 Tax Breakdown — Age ${selectedAge} (${calYear})`}>
+                <Card>
+                  <Row label="Portfolio withdrawal" result={fmt(retireSnap.yr.totalWithdrawal)} />
+                  <Row label="+ Government benefits" result={fmt(retireSnap.yr.governmentBenefitIncome)} />
+                  {retireSnap.yr.incomeStreamIncome > 0 && (
+                    <Row label="+ Income streams" result={fmt(retireSnap.yr.incomeStreamIncome)} />
+                  )}
+                  <Row label="Gross income" result={fmt(retireSnap.yr.grossIncome)} />
+                  <Divider />
+                  <Row
+                    label="− Standard deduction"
+                    result={`(${fmt(retireSnap.stdDeduction)})`}
+                    note={assumptions.adjustTaxBracketsForInflation !== false
+                      ? `${fmt(retireSnap.baseDeduction)} base × ${fmtM(inflFactor)} inflation factor = ${fmt(retireSnap.stdDeduction)}`
+                      : `Fixed at ${fmt(retireSnap.stdDeduction)} (bracket indexing off)`}
                   />
                   <Divider />
-                  <FormulaRow label="End of year balance" result={fmt(newBal)} />
-                </div>
-              ))}
-            </Section>
+                  <Row label="Federal tax" result={fmt(retireSnap.yr.federalTax)} />
+                  <Row
+                    label="State tax"
+                    result={fmt(retireSnap.yr.stateTax)}
+                    note={profile.stateTaxRate ? `${pct(profile.stateTaxRate)} flat rate` : undefined}
+                  />
+                  {retireSnap.yr.totalPenalties > 0 && (
+                    <Row label="Early withdrawal penalties" result={fmt(retireSnap.yr.totalPenalties)} />
+                  )}
+                  <Row label="Total tax" result={fmt(retireSnap.yr.totalTax)} />
+                  <Divider />
+                  <Row
+                    label="Effective tax rate"
+                    result={pct(retireSnap.effectiveRate)}
+                    note="Total tax ÷ gross income"
+                  />
+                  <Row label="After-tax income" result={fmt(retireSnap.yr.afterTaxIncome)} />
+                  <Row label="Remaining portfolio" result={fmt(retireSnap.yr.totalRemainingBalance)} />
+                </Card>
+              </Section>
+            </>
           )}
 
-          {/* ── 3. Retirement spending target ── */}
-          <Section title="🎯 Retirement Spending Target">
-            {spendingMath.mode === 'goal' ? (
-              <div className="space-y-1 bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
-                <FormulaRow
-                  label="Spending goal today"
-                  result={fmt(spendingMath.goal)}
-                />
-                <FormulaRow
-                  label={`× inflation over ${yearsToRetirement} yrs`}
-                  formula={`× (1 + ${pct(assumptions.inflationRate)})^${yearsToRetirement}`}
-                  result={`× ${fmtN(spendingMath.inflationAtRetirement, 3)}`}
-                />
-                <Divider />
-                <FormulaRow
-                  label="Year-1 retirement spend"
-                  result={fmt(spendingMath.nominalAtRetirement)}
-                  note="Grows with inflation each subsequent year"
-                />
-              </div>
-            ) : (
-              <div className="space-y-1 bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
-                <FormulaRow
-                  label="Portfolio at retirement"
-                  result={fmt(spendingMath.totalAtRetirement)}
-                />
-                <FormulaRow
-                  label={`× ${pct(spendingMath.swr)} withdrawal rate`}
-                  formula={`${fmt(spendingMath.totalAtRetirement)} × ${pct(spendingMath.swr)}`}
-                  result={fmt(spendingMath.annualSpend)}
-                />
-                <Divider />
-                <FormulaRow
-                  label="Year-1 retirement spend"
-                  result={fmt(spendingMath.annualSpend)}
-                  note="Grows with inflation each subsequent year"
-                />
-              </div>
-            )}
-          </Section>
-
-          {/* ── 4. Year-1 retirement tax breakdown ── */}
-          {retireTax1 && (
-            <Section title={`🧾 Tax Calculation — Age ${profile.retirementAge} (Year 1 of Retirement)`}>
-              <div className="space-y-1 bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
-                <FormulaRow label="Portfolio withdrawal" result={fmt(retireTax1.yr.totalWithdrawal)} />
-                <FormulaRow label="+ Government benefits" result={fmt(retireTax1.yr.governmentBenefitIncome)} />
-                {retireTax1.yr.incomeStreamIncome > 0 && (
-                  <FormulaRow label="+ Income streams" result={fmt(retireTax1.yr.incomeStreamIncome)} />
-                )}
-                <FormulaRow
-                  label="Gross income"
-                  result={fmt(retireTax1.yr.grossIncome)}
-                />
-                <Divider />
-                <FormulaRow
-                  label="− Standard deduction"
-                  result={`(${fmt(retireTax1.stdDeduction)})`}
-                  note={`${profile.filingStatus === 'married_filing_jointly' ? 'MFJ' : 'Single'} · inflation-indexed in projections`}
-                />
-                <FormulaRow
-                  label="≈ Taxable ordinary income"
-                  result={fmt(retireTax1.taxableOrdinary)}
-                />
-                <Divider />
-                <FormulaRow label="Federal tax" result={fmt(retireTax1.fedTax)} />
-                <FormulaRow
-                  label="State tax"
-                  result={fmt(retireTax1.stateTax)}
-                  note={profile.stateTaxRate ? `${pct(profile.stateTaxRate)} flat rate` : undefined}
-                />
-                <FormulaRow label="Total tax" result={fmt(retireTax1.yr.totalTax)} />
-                <Divider />
-                <FormulaRow
-                  label="Effective tax rate"
-                  result={pct(retireTax1.effectiveRate)}
-                  note="Total tax ÷ gross income"
-                />
-                <FormulaRow label="After-tax income" result={fmt(retireTax1.yr.afterTaxIncome)} />
-              </div>
-              <p className="text-xs text-gray-400 dark:text-gray-500">
-                Note: Exact bracket amounts vary by account mix withdrawn. Numbers shown are an approximation of the blended ordinary income; actual per-bracket detail is in the Retirement Phase tab.
-              </p>
-            </Section>
-          )}
-
-          {/* ── Inflation & growth audit ── */}
+          {/* ── What grows ── */}
           <Section title="📋 What grows and what doesn't">
             <div className="space-y-1 text-sm">
               {[
-                { label: 'Your contributions', grows: true, how: `${pct(accounts[0]?.contributionGrowthRate ?? 0.03)}/yr contribution growth rate` },
-                { label: 'IRS / CRA contribution limit', grows: true, how: `inflation (${pct(assumptions.inflationRate)}/yr), rounded to $500` },
-                { label: 'Salary for % match cap', grows: true, how: `contribution growth rate — salary and contributions move together` },
-                { label: 'Dollar match cap', grows: false, how: 'fixed nominal amount you entered' },
-                { label: 'Retirement spending target', grows: true, how: `inflation (${pct(assumptions.inflationRate)}/yr) each retirement year` },
-                { label: 'Social Security / gov\'t benefits', grows: true, how: `inflation (${pct(assumptions.inflationRate)}/yr)` },
-                { label: 'Income streams', grows: true, how: `inflation (${pct(assumptions.inflationRate)}/yr)` },
-                { label: 'Life events (inflation on)', grows: true, how: `inflation (${pct(assumptions.inflationRate)}/yr)` },
-                { label: 'Life events (inflation off)', grows: false, how: 'fixed amount you entered' },
+                { label: 'Your contributions',            grows: true,  how: `Contribution growth rate · ${pct(accounts[0]?.contributionGrowthRate ?? 0.03)}/yr` },
+                { label: `${irsLabel} contribution limit`, grows: true,  how: `Inflation (${pct(assumptions.inflationRate)}/yr) · rounded to $500` },
+                { label: 'Salary for % match cap',        grows: true,  how: 'Contribution growth rate — salary and contributions move together' },
+                { label: 'Dollar match cap',              grows: false, how: 'Fixed nominal amount you entered' },
+                { label: 'Retirement spending target',    grows: true,  how: `Inflation (${pct(assumptions.inflationRate)}/yr) each retirement year` },
+                { label: 'Social Security / gov\'t benefits', grows: true,  how: `Inflation (${pct(assumptions.inflationRate)}/yr)` },
+                { label: 'Income streams',                grows: true,  how: `Inflation (${pct(assumptions.inflationRate)}/yr)` },
+                { label: 'Life events (inflation on)',    grows: true,  how: `Inflation (${pct(assumptions.inflationRate)}/yr)` },
+                { label: 'Life events (inflation off)',   grows: false, how: 'Fixed amount you entered' },
                 {
                   label: 'Tax bracket thresholds',
                   grows: assumptions.adjustTaxBracketsForInflation !== false,
                   how: assumptions.adjustTaxBracketsForInflation !== false
-                    ? `inflation (${pct(assumptions.inflationRate)}/yr) — toggle in Assumptions`
-                    : 'static 2026 brackets (toggle in Assumptions to index)',
+                    ? `Inflation (${pct(assumptions.inflationRate)}/yr) — on`
+                    : 'Static 2026 brackets — toggle in Assumptions',
                 },
               ].map(({ label, grows, how }) => (
                 <div key={label} className="flex items-start gap-2">
@@ -372,7 +400,7 @@ export function MathDebugPanel({
             </div>
           </Section>
 
-          {/* ── Assumptions reference ── */}
+          {/* ── Assumptions ── */}
           <Section title="⚙️ Assumptions in Use">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {[
