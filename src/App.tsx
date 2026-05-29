@@ -32,6 +32,8 @@ import { DataTableAccumulation } from "./components/DataTableAccumulation";
 import { DataTableWithdrawal } from "./components/DataTableWithdrawal";
 import { OnboardingWizard } from "./components/OnboardingWizard";
 import { ChartTimeline } from "./components/ChartTimeline";
+import { ChartNetWorth } from "./components/ChartNetWorth";
+import { ChartSpending } from "./components/ChartSpending";
 import { deriveMilestones } from "./utils/milestones";
 import { calculateFire, calculateEarlyAccess } from "./utils/fire";
 import { v4 as uuidv4 } from "uuid";
@@ -581,6 +583,18 @@ function AppContent() {
                   />
 
                   <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                      Net Worth Over Time
+                    </h3>
+                    <ChartNetWorth
+                      accumulation={accumulation}
+                      retirement={retirement}
+                      profile={profile}
+                      isDarkMode={isDarkMode}
+                    />
+                  </div>
+
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
                       Plan Timeline
                     </h3>
@@ -669,6 +683,16 @@ function AppContent() {
 
                   <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                      Annual Spending
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                      Stacked bars show where spending is sourced. Orange line is the inflation-adjusted target.
+                    </p>
+                    <ChartSpending result={retirement} isDarkMode={isDarkMode} />
+                  </div>
+
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                       Tax Burden Over Time
                     </h3>
                     <ChartTax result={retirement} isDarkMode={isDarkMode} />
@@ -709,14 +733,11 @@ function AppContent() {
   );
 }
 
-// Wrapper component that provides the CountryProvider with reset callback
 function App() {
   const handleCountryChange = useCallback((newCountry: CountryCode) => {
-    // Reset to country-specific defaults
     const countryConfig = getCountryConfig(newCountry);
     const defaultProfile = countryConfig.getDefaultProfile();
 
-    // Clear localStorage and set new defaults
     localStorage.setItem(
       "retirement-planner-accounts",
       JSON.stringify(createDefaultAccounts(newCountry)),
@@ -729,13 +750,11 @@ function App() {
       }),
     );
 
-    // Reset income streams — default SS for US, empty for Canada
     localStorage.setItem(
       "retirement-planner-income-streams",
       JSON.stringify(newCountry === "US" ? DEFAULT_INCOME_STREAMS : []),
     );
 
-    // Force reload to reinitialize with new country defaults
     window.location.reload();
   }, []);
 
