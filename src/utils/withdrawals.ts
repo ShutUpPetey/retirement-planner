@@ -126,6 +126,13 @@ export function calculateWithdrawals(
     // Common inflation factor for this year
     const yearsFromNow = age - profile.currentAge;
     const inflationMultiplier = Math.pow(1 + assumptions.inflationRate, yearsFromNow);
+    // When tax bracket indexing is on, scale brackets by the same factor as inflation.
+    // Implemented by deflating nominal income to real dollars before running through
+    // static 2024 brackets, then re-inflating the tax result — mathematically identical
+    // to growing all bracket thresholds with inflation.
+    const taxInflationFactor = assumptions.adjustTaxBracketsForInflation !== false
+      ? inflationMultiplier
+      : 1;
 
     // Calculate government retirement benefits (Social Security, CPP/OAS, etc.)
     let governmentBenefits = 0;
@@ -211,7 +218,8 @@ export function calculateWithdrawals(
       accountDepletionAges,
       age,
       countryConfig,
-      nonPortfolioTaxableIncome
+      nonPortfolioTaxableIncome,
+      taxInflationFactor
     );
 
     // Calculate early withdrawal penalties
@@ -238,44 +246,49 @@ export function calculateWithdrawals(
       governmentBenefitTaxable + ssStreamTaxable + pensionTaxable + otherIncomeTaxable;
     const capitalGains = withdrawals.taxableGains;
 
+    // Deflate nominal income to real (2024) dollars so static brackets apply correctly
+    // when bracket indexing is on. Tax result is re-inflated to nominal afterward.
+    const realOrdinaryIncome = ordinaryIncome / taxInflationFactor;
+    const realCapitalGains = capitalGains / taxInflationFactor;
+
     let federalTax: number;
     let stateTax: number;
 
     if (countryConfig) {
-      // Use country-specific tax calculations
-      federalTax = countryConfig.calculateFederalTax(ordinaryIncome, profile.filingStatus);
-      // Add capital gains tax (country handles inclusion rates)
+      // Use country-specific tax calculations on real income
+      federalTax = countryConfig.calculateFederalTax(realOrdinaryIncome, profile.filingStatus);
       federalTax += countryConfig.calculateCapitalGainsTax(
-        capitalGains,
-        ordinaryIncome,
+        realCapitalGains,
+        realOrdinaryIncome,
         profile.region || '',
         profile.filingStatus
       );
-      // Calculate regional (state/provincial) tax
       stateTax = countryConfig.calculateRegionalTax(
-        ordinaryIncome + capitalGains,
+        realOrdinaryIncome + realCapitalGains,
         profile.region || ''
       );
-      // For US, regional tax is still calculated using flat rate from profile
-      // (the US config returns 0 from calculateRegionalTax)
       if (countryConfig.code === 'US') {
         stateTax = calculateStateTax(
-          ordinaryIncome + capitalGains - getStandardDeduction(profile.filingStatus || 'single'),
+          realOrdinaryIncome + realCapitalGains - getStandardDeduction(profile.filingStatus || 'single'),
           profile.stateTaxRate || 0
         );
       }
     } else {
       // Fallback to US logic
       federalTax = calculateTotalFederalTax(
-        ordinaryIncome,
-        capitalGains,
+        realOrdinaryIncome,
+        realCapitalGains,
         profile.filingStatus || 'single'
       );
       stateTax = calculateStateTax(
-        ordinaryIncome + capitalGains - getStandardDeduction(profile.filingStatus || 'single'),
+        realOrdinaryIncome + realCapitalGains - getStandardDeduction(profile.filingStatus || 'single'),
         profile.stateTaxRate || 0
       );
     }
+
+    // Re-inflate taxes to nominal dollars
+    federalTax *= taxInflationFactor;
+    stateTax *= taxInflationFactor;
     const totalTax = federalTax + stateTax + totalPenalties;
     lifetimeTaxesPaid += totalTax;
 
@@ -357,7 +370,8 @@ function performTaxOptimizedWithdrawal(
   accountDepletionAges: Record<string, number | null>,
   age: number,
   countryConfig?: CountryConfig,
-  nonPortfolioTaxableIncome?: number
+  nonPortfolioTaxableIncome?: number,
+  taxInflationFactor: number = 1
 ): WithdrawalResult {
   const result: WithdrawalResult = {
     total: 0,
@@ -432,10 +446,11 @@ function performTaxOptimizedWithdrawal(
   }
 
   // Step 2: Fill up to 12% bracket with additional traditional withdrawals
-  // (Standard deduction + 12% bracket gives good tax efficiency)
+  // Bracket thresholds and the standard deduction are scaled by the inflation
+  // factor so the optimizer fills the same real bracket room in future years.
   const filingStatus = profile.filingStatus || 'single';
-  const standardDeduction = getStandardDeduction(filingStatus);
-  const bracket12Max = filingStatus === 'married_filing_jointly' ? 94300 : 47150;
+  const standardDeduction = getStandardDeduction(filingStatus) * taxInflationFactor;
+  const bracket12Max = (filingStatus === 'married_filing_jointly' ? 94300 : 47150) * taxInflationFactor;
   const targetOrdinaryIncome = standardDeduction + bracket12Max;
   const currentOrdinaryIncome = result.traditionalWithdrawal +
     (nonPortfolioTaxableIncome || 0);

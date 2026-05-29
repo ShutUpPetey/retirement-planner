@@ -77,7 +77,7 @@ Main complexity is where the money comes from when a big expense hits. The water
 ---
 
 ### 4. Inflation-indexed tax brackets · Effort: S · Modeling realism
-- [ ] **Done**
+- [x] **Done**
 
 **What it does**
 Instead of static 2024 brackets in every future year, brackets grow with inflation so bracket creep doesn't artificially inflate future tax bills. Makes the withdrawal tax math honest for long retirements.

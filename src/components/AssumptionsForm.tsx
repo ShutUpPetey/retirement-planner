@@ -77,6 +77,22 @@ export function AssumptionsForm({
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
             Historical average: ~3%
           </p>
+          <label className="flex items-start gap-2 mt-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={assumptions.adjustTaxBracketsForInflation !== false}
+              onChange={(e) => onChange({ ...assumptions, adjustTaxBracketsForInflation: e.target.checked })}
+              className="mt-0.5"
+            />
+            <div>
+              <span className="text-sm text-gray-700 dark:text-gray-300">
+                Adjust tax brackets for inflation
+              </span>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Bracket thresholds grow with inflation each year, preventing bracket creep from overstating future taxes (recommended)
+              </p>
+            </div>
+          </label>
         </div>
 
         <div>

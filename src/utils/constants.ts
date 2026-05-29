@@ -137,6 +137,7 @@ export const DEFAULT_ASSUMPTIONS = {
   retirementReturnRate: 0.05,
   annualSpendingGoal: 60000,
   baristaAnnualIncome: 20000,
+  adjustTaxBracketsForInflation: true,
 };
 
 // FIRE spending-level multipliers (applied to the annual spending goal)

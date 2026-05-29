@@ -97,6 +97,7 @@ export interface Assumptions {
   baristaAnnualIncome?: number; // expected part-time income for Barista FIRE, today's dollars
   leanMultiplier?: number; // fraction of spending for Lean FIRE, e.g. 0.7
   fatMultiplier?: number;  // fraction of spending for Fat FIRE, e.g. 1.6
+  adjustTaxBracketsForInflation?: boolean; // default true — bracket thresholds grow with inflation
 }
 
 // ---- FIRE (Financial Independence / Retire Early) ----
