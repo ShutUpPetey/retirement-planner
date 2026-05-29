@@ -100,9 +100,21 @@ export function calculateWithdrawals(
       : 0,
   }));
 
-  // Calculate initial target spending based on safe withdrawal rate
   const totalPortfolio = accumulationResult.totalAtRetirement;
-  let targetSpending = totalPortfolio * assumptions.safeWithdrawalRate;
+
+  // Inflation factor from today to retirement start — used to convert the
+  // today's-dollar spending goal into the nominal amount for year 1.
+  const yearsToRetirement = profile.retirementAge - profile.currentAge;
+  const inflationAtRetirement = Math.pow(1 + assumptions.inflationRate, Math.max(0, yearsToRetirement));
+
+  // In 'goal' mode the user's Annual Spending Goal drives every withdrawal year.
+  // In 'swr' mode (default) the portfolio × SWR drives spending.
+  let targetSpending: number;
+  if (assumptions.spendingMode === 'goal' && (assumptions.annualSpendingGoal ?? 0) > 0) {
+    targetSpending = assumptions.annualSpendingGoal! * inflationAtRetirement;
+  } else {
+    targetSpending = totalPortfolio * assumptions.safeWithdrawalRate;
+  }
 
   const yearlyWithdrawals: YearlyWithdrawal[] = [];
   let lifetimeTaxesPaid = 0;
@@ -327,9 +339,13 @@ export function calculateWithdrawals(
   }
 
   // Sustainable withdrawal amounts at retirement, in nominal (future) dollars.
-  // Callers that present "today's dollars" must deflate by inflation over the
-  // years to retirement — see SummaryCards.
-  const sustainableAnnualWithdrawal = totalPortfolio * assumptions.safeWithdrawalRate;
+  // In goal mode this reflects the spending goal inflated to retirement year.
+  // In SWR mode it reflects the portfolio × SWR.
+  // Callers presenting "today's dollars" must deflate — see SummaryCards.
+  const sustainableAnnualWithdrawal =
+    assumptions.spendingMode === 'goal' && (assumptions.annualSpendingGoal ?? 0) > 0
+      ? assumptions.annualSpendingGoal! * inflationAtRetirement
+      : totalPortfolio * assumptions.safeWithdrawalRate;
   const sustainableMonthlyWithdrawal = sustainableAnnualWithdrawal / 12;
 
   return {

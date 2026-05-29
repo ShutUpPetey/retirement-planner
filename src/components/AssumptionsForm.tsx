@@ -58,6 +58,42 @@ export function AssumptionsForm({
         </p>
       </div>
 
+      {/* Spending mode toggle */}
+      <div>
+        <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Retirement Spending Mode</p>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => onChange({ ...assumptions, spendingMode: 'swr' })}
+            className={`px-3 py-2.5 rounded-lg border text-sm font-medium text-left transition-colors ${
+              (assumptions.spendingMode ?? 'swr') === 'swr'
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-blue-300 dark:hover:border-blue-500'
+            }`}
+          >
+            <div className="font-semibold">What can I spend?</div>
+            <div className="text-xs mt-0.5 opacity-75">Portfolio × withdrawal rate</div>
+          </button>
+          <button
+            type="button"
+            onClick={() => onChange({ ...assumptions, spendingMode: 'goal' })}
+            className={`px-3 py-2.5 rounded-lg border text-sm font-medium text-left transition-colors ${
+              assumptions.spendingMode === 'goal'
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-blue-300 dark:hover:border-blue-500'
+            }`}
+          >
+            <div className="font-semibold">Can I afford my goal?</div>
+            <div className="text-xs mt-0.5 opacity-75">Spend goal · show if it lasts</div>
+          </button>
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
+          {(assumptions.spendingMode ?? 'swr') === 'swr'
+            ? 'Retirement spending is set by your portfolio size × withdrawal rate. Use the Annual Spending Goal below for FIRE targets only.'
+            : 'Retirement spending is driven by your Annual Spending Goal. The chart shows whether your portfolio survives to life expectancy at that spend level.'}
+        </p>
+      </div>
+
       <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -148,7 +184,9 @@ export function AssumptionsForm({
             className={inputClassName}
           />
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Today's dollars; used for FIRE numbers
+            {assumptions.spendingMode === 'goal'
+              ? "Today's dollars · drives the retirement simulation"
+              : "Today's dollars · used for FIRE targets (switch mode above to use for simulation)"}
           </p>
         </div>
 

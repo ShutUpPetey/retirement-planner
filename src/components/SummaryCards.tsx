@@ -312,44 +312,88 @@ export function SummaryCards({
       <div>
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">During Retirement</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <ExpandableStatCard
-            title="Monthly Withdrawal"
-            value={formatCurrency(sustainableMonthlyWithdrawal)}
-            secondaryValue={todayHint(sustainableMonthlyWithdrawal, sustainableMonthlyWithdrawalReal)}
-            color="green"
-            formula={`${formatCurrency(totalAtRetirement)} × ${formatPercent(assumptions.safeWithdrawalRate)} ÷ 12`}
-            details={
-              <div>
-                <p className="mb-1">
-                  Based on the {formatPercent(assumptions.safeWithdrawalRate)} safe withdrawal rate applied to your
-                  {' '}{formatCurrency(totalAtRetirement)} portfolio at retirement.
-                </p>
-                <p>
-                  Actual withdrawals will be adjusted for {formatPercent(assumptions.inflationRate)} annual inflation. In today's-dollar terms, this stays roughly constant year over year.
-                </p>
-              </div>
-            }
-          />
-          <ExpandableStatCard
-            title="Annual Withdrawal"
-            value={formatCurrency(sustainableAnnualWithdrawal)}
-            secondaryValue={todayHint(sustainableAnnualWithdrawal, sustainableAnnualWithdrawalReal)}
-            color="green"
-            formula={`${formatCurrency(totalAtRetirement)} × ${formatPercent(assumptions.safeWithdrawalRate)}`}
-            details={
-              <div>
-                <p className="mb-1">
-                  = {formatCurrency(totalAtRetirement)} × {formatPercent(assumptions.safeWithdrawalRate)}
-                </p>
-                <p className="mb-1">
-                  = {formatCurrency(sustainableAnnualWithdrawal)} at retirement
-                </p>
-                <p className="text-gray-500 dark:text-gray-400 italic">
-                  This is your initial withdrawal amount. Each year it increases by the inflation rate ({formatPercent(assumptions.inflationRate)}). In today's-dollar terms, buying power stays roughly constant.
-                </p>
-              </div>
-            }
-          />
+          {assumptions.spendingMode === 'goal' ? (
+            <ExpandableStatCard
+              title="Monthly Spending Goal"
+              value={formatCurrency(sustainableMonthlyWithdrawal)}
+              secondaryValue={todayHint(sustainableMonthlyWithdrawal, sustainableMonthlyWithdrawalReal)}
+              color="green"
+              formula={`Annual goal ÷ 12 (inflated to age ${profile.retirementAge})`}
+              details={
+                <div>
+                  <p className="mb-1">
+                    Your spending goal of {formatCurrency(assumptions.annualSpendingGoal ?? 0)}/yr (today's dollars)
+                    inflates to {formatCurrency(sustainableAnnualWithdrawal)}/yr at retirement.
+                  </p>
+                  <p>
+                    The simulation spends this amount each year (growing with inflation), and the Portfolio Longevity card shows whether your portfolio lasts.
+                  </p>
+                </div>
+              }
+            />
+          ) : (
+            <ExpandableStatCard
+              title="Monthly Withdrawal"
+              value={formatCurrency(sustainableMonthlyWithdrawal)}
+              secondaryValue={todayHint(sustainableMonthlyWithdrawal, sustainableMonthlyWithdrawalReal)}
+              color="green"
+              formula={`${formatCurrency(totalAtRetirement)} × ${formatPercent(assumptions.safeWithdrawalRate)} ÷ 12`}
+              details={
+                <div>
+                  <p className="mb-1">
+                    Based on the {formatPercent(assumptions.safeWithdrawalRate)} safe withdrawal rate applied to your
+                    {' '}{formatCurrency(totalAtRetirement)} portfolio at retirement.
+                  </p>
+                  <p>
+                    Actual withdrawals will be adjusted for {formatPercent(assumptions.inflationRate)} annual inflation. In today's-dollar terms, this stays roughly constant year over year.
+                  </p>
+                </div>
+              }
+            />
+          )}
+          {assumptions.spendingMode === 'goal' ? (
+            <ExpandableStatCard
+              title="Annual Spending Goal"
+              value={formatCurrency(sustainableAnnualWithdrawal)}
+              secondaryValue={todayHint(sustainableAnnualWithdrawal, sustainableAnnualWithdrawalReal)}
+              color="green"
+              formula={`${formatCurrency(assumptions.annualSpendingGoal ?? 0)} today → inflated ${yearsToRetirement} yrs`}
+              details={
+                <div>
+                  <p className="mb-1">
+                    Goal: {formatCurrency(assumptions.annualSpendingGoal ?? 0)}/yr in today's dollars.
+                  </p>
+                  <p className="mb-1">
+                    At retirement (age {profile.retirementAge}): {formatCurrency(sustainableAnnualWithdrawal)}/yr nominal.
+                  </p>
+                  <p className="text-gray-500 dark:text-gray-400 italic">
+                    Each subsequent year the target grows with inflation ({formatPercent(assumptions.inflationRate)}/yr), keeping real purchasing power constant.
+                  </p>
+                </div>
+              }
+            />
+          ) : (
+            <ExpandableStatCard
+              title="Annual Withdrawal"
+              value={formatCurrency(sustainableAnnualWithdrawal)}
+              secondaryValue={todayHint(sustainableAnnualWithdrawal, sustainableAnnualWithdrawalReal)}
+              color="green"
+              formula={`${formatCurrency(totalAtRetirement)} × ${formatPercent(assumptions.safeWithdrawalRate)}`}
+              details={
+                <div>
+                  <p className="mb-1">
+                    = {formatCurrency(totalAtRetirement)} × {formatPercent(assumptions.safeWithdrawalRate)}
+                  </p>
+                  <p className="mb-1">
+                    = {formatCurrency(sustainableAnnualWithdrawal)} at retirement
+                  </p>
+                  <p className="text-gray-500 dark:text-gray-400 italic">
+                    This is your initial withdrawal amount. Each year it increases by the inflation rate ({formatPercent(assumptions.inflationRate)}). In today's-dollar terms, buying power stays roughly constant.
+                  </p>
+                </div>
+              }
+            />
+          )}
           <ExpandableStatCard
             title="Portfolio Longevity"
             value={portfolioDepletionAge ? `Age ${portfolioDepletionAge}` : 'Never depletes'}

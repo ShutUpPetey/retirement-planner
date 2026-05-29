@@ -98,6 +98,7 @@ export interface Assumptions {
   leanMultiplier?: number; // fraction of spending for Lean FIRE, e.g. 0.7
   fatMultiplier?: number;  // fraction of spending for Fat FIRE, e.g. 1.6
   adjustTaxBracketsForInflation?: boolean; // default true — bracket thresholds grow with inflation
+  spendingMode?: 'swr' | 'goal'; // default 'swr' — how retirement spending target is set
 }
 
 // ---- FIRE (Financial Independence / Retire Early) ----
