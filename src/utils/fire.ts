@@ -1,0 +1,269 @@
+import {
+  Account,
+  Profile,
+  Assumptions,
+  FireResult,
+  FireTarget,
+  FireProjectionPoint,
+  is401k,
+  getTaxTreatment,
+} from '../types';
+import {
+  LEAN_FIRE_MULTIPLIER,
+  FAT_FIRE_MULTIPLIER,
+  DEFAULT_ACCUMULATION_RETURN,
+} from './constants';
+
+/**
+ * FIRE (Financial Independence / Retire Early) calculations.
+ *
+ * All figures are expressed in TODAY'S DOLLARS. We use a REAL (inflation-adjusted)
+ * rate of return so a portfolio "number" computed today is directly comparable to
+ * spending expressed in today's dollars.
+ *
+ *   FIRE number   = annual spending / safe withdrawal rate   (the "25x" rule at 4%)
+ *   Lean / Fat    = full number at a leaner / more generous spending level
+ *   Coast FIRE    = amount needed invested TODAY so it grows to the full number by
+ *                   retirement age with NO further contributions
+ *   Barista FIRE  = portfolio so that safe withdrawals + part-time income cover spending
+ */
+
+const SPENDING_GOAL_FALLBACK = 60000;
+
+function employerMatch(account: Account): number {
+  const supportsMatch = is401k(account.type) || account.type === 'employer_rrsp';
+  if (!supportsMatch || !account.employerMatchPercent || !account.employerMatchLimit) return 0;
+  return Math.min(account.annualContribution * account.employerMatchPercent, account.employerMatchLimit);
+}
+
+function weightedNominalReturn(accounts: Account[]): number {
+  const totalBalance = accounts.reduce((sum, a) => sum + a.balance, 0);
+  if (totalBalance <= 0) {
+    if (accounts.length === 0) return DEFAULT_ACCUMULATION_RETURN;
+    return accounts.reduce((sum, a) => sum + a.returnRate, 0) / accounts.length;
+  }
+  return accounts.reduce((sum, a) => sum + a.returnRate * (a.balance / totalBalance), 0);
+}
+
+/** First age the portfolio reaches `target`, projecting in REAL terms. null if not by 100. */
+function ageWhenReached(
+  startBalance: number,
+  realAnnualContribution: number,
+  realReturn: number,
+  currentAge: number,
+  retirementAge: number,
+  target: number
+): number | null {
+  if (startBalance >= target) return currentAge;
+  let balance = startBalance;
+  for (let age = currentAge + 1; age <= 100; age++) {
+    const contrib = age <= retirementAge ? realAnnualContribution : 0;
+    balance = balance * (1 + realReturn) + contrib;
+    if (balance >= target) return age;
+  }
+  return null;
+}
+
+export function calculateFire(
+  accounts: Account[],
+  profile: Profile,
+  assumptions: Assumptions
+): FireResult {
+  const annualSpending = assumptions.annualSpendingGoal ?? SPENDING_GOAL_FALLBACK;
+  const swr = assumptions.safeWithdrawalRate > 0 ? assumptions.safeWithdrawalRate : 0.04;
+  const inflation = assumptions.inflationRate ?? 0.03;
+  const leanMult = assumptions.leanMultiplier ?? LEAN_FIRE_MULTIPLIER;
+  const fatMult = assumptions.fatMultiplier ?? FAT_FIRE_MULTIPLIER;
+
+  const currentInvested = accounts.reduce((sum, a) => sum + a.balance, 0);
+  const nominalReturnRate = weightedNominalReturn(accounts);
+  const realReturnRate = (1 + nominalReturnRate) / (1 + inflation) - 1;
+  const yearsToRetirement = Math.max(0, profile.retirementAge - profile.currentAge);
+
+  // Continuing contributions in today's dollars (this year's contribution + match),
+  // held flat in real terms for the "on your current path" projection.
+  const realAnnualContribution = accounts.reduce(
+    (sum, a) => sum + a.annualContribution + employerMatch(a),
+    0
+  );
+
+  const fullNumber = annualSpending / swr;
+  const leanNumber = (annualSpending * leanMult) / swr;
+  const fatNumber = (annualSpending * fatMult) / swr;
+  const coastNumber =
+    realReturnRate > -1 ? fullNumber / Math.pow(1 + realReturnRate, yearsToRetirement) : fullNumber;
+  const baristaIncome = assumptions.baristaAnnualIncome ?? 0;
+  const baristaNumber = Math.max(0, (annualSpending - baristaIncome) / swr);
+
+  const coastAchieveAge = ageWhenReached(
+    currentInvested, 0, realReturnRate, profile.currentAge, profile.retirementAge, fullNumber
+  );
+
+  const makeTarget = (
+    id: FireTarget['id'], label: string, description: string,
+    targetNumber: number, contributionForProjection: number
+  ): FireTarget => ({
+    id, label, description, targetNumber,
+    achieved: currentInvested >= targetNumber,
+    surplusOrShortfall: currentInvested - targetNumber,
+    achieveAge: ageWhenReached(
+      currentInvested, contributionForProjection, realReturnRate,
+      profile.currentAge, profile.retirementAge, targetNumber
+    ),
+  });
+
+  const targets: FireTarget[] = [
+    makeTarget('full', 'Full FIRE',
+      `Your number: ${Math.round(1 / swr)}× annual spending. Fully fund your lifestyle from investments.`,
+      fullNumber, realAnnualContribution),
+    makeTarget('lean', 'Lean FIRE',
+      `A leaner lifestyle at ${Math.round(leanMult * 100)}% of your target spending.`,
+      leanNumber, realAnnualContribution),
+    makeTarget('fat', 'Fat FIRE',
+      `A more generous lifestyle at ${Math.round(fatMult * 100)}% of your target spending.`,
+      fatNumber, realAnnualContribution),
+    makeTarget('coast', 'Coast FIRE',
+      'Enough invested today that, with no further contributions, you coast to Full FIRE by retirement age.',
+      coastNumber, 0),
+    makeTarget('barista', 'Barista FIRE',
+      baristaIncome > 0
+        ? `Withdrawals plus ~$${Math.round(baristaIncome).toLocaleString()}/yr of part-time income cover your spending.`
+        : 'Withdrawals plus part-time income cover your spending. Set a part-time income to personalize this.',
+      baristaNumber, realAnnualContribution),
+  ];
+
+  // Today's-dollar projection path from current age to life expectancy.
+  const projection: FireProjectionPoint[] = [];
+  let bal = currentInvested;
+  const endAge = Math.max(profile.lifeExpectancy, profile.retirementAge + 1);
+  projection.push({ age: profile.currentAge, balance: bal, contributing: true });
+  for (let age = profile.currentAge + 1; age <= endAge; age++) {
+    const contributing = age <= profile.retirementAge;
+    bal = bal * (1 + realReturnRate) + (contributing ? realAnnualContribution : 0);
+    projection.push({ age, balance: Math.max(0, bal), contributing });
+  }
+
+  return {
+    currentInvested, annualSpending, nominalReturnRate, realReturnRate,
+    yearsToRetirement, coastAchieveAge, targets, projection,
+  };
+}
+
+/**
+ * Required level annual savings (today's dollars) to reach `target` by retirement age,
+ * given current balance and real return. Returns 0 if already on track from balance alone.
+ */
+function requiredAnnualSavings(
+  currentBalance: number, target: number, realReturn: number, years: number
+): number {
+  if (years <= 0) return Math.max(0, target - currentBalance);
+  const fvCurrent = currentBalance * Math.pow(1 + realReturn, years);
+  const remaining = target - fvCurrent;
+  if (remaining <= 0) return 0;
+  if (Math.abs(realReturn) < 1e-9) return remaining / years;
+  const annuityFactor = (Math.pow(1 + realReturn, years) - 1) / realReturn;
+  return remaining / annuityFactor;
+}
+
+/**
+ * Generate plain-language, situation-aware guidance for the FIRE tab.
+ */
+export function generateFireAdvice(
+  fire: FireResult,
+  accounts: Account[],
+  profile: Profile,
+  _assumptions: Assumptions
+): string[] {
+  const tips: string[] = [];
+  const fmt = (n: number) =>
+    `$${Math.round(n).toLocaleString()}`;
+
+  const full = fire.targets.find(t => t.id === 'full');
+  const coast = fire.targets.find(t => t.id === 'coast');
+  const years = fire.yearsToRetirement;
+
+  // 1. Coast status
+  if (coast?.achieved) {
+    tips.push(
+      `You've hit Coast FIRE: your current savings alone should grow to your Full FIRE number by retirement${
+        fire.coastAchieveAge ? ` (around age ${fire.coastAchieveAge})` : ''
+      }. New contributions now mainly buy an earlier or richer retirement.`
+    );
+  } else if (coast) {
+    tips.push(
+      `You're ${fmt(-coast.surplusOrShortfall)} away from Coast FIRE (${fmt(
+        coast.targetNumber
+      )}). Once you cross it, you could stop contributing and still reach your number by retirement age.`
+    );
+  }
+
+  // 2. Required savings to hit Full FIRE by retirement age
+  if (full && !full.achieved) {
+    const needAnnual = requiredAnnualSavings(
+      fire.currentInvested, full.targetNumber, fire.realReturnRate, years
+    );
+    const currentAnnual = accounts.reduce(
+      (s, a) => s + a.annualContribution + (a.employerMatchPercent && a.employerMatchLimit
+        ? Math.min(a.annualContribution * a.employerMatchPercent, a.employerMatchLimit) : 0),
+      0
+    );
+    if (needAnnual <= 0) {
+      tips.push(
+        `To reach Full FIRE by age ${profile.retirementAge}, your current balance alone is enough to coast — no further saving strictly required.`
+      );
+    } else {
+      const gap = needAnnual - currentAnnual;
+      tips.push(
+        `To reach Full FIRE (${fmt(full.targetNumber)}) by age ${profile.retirementAge}, save about ${fmt(
+          needAnnual
+        )}/yr (~${fmt(needAnnual / 12)}/mo) in today's dollars. ${
+          gap > 0
+            ? `That's ${fmt(gap)}/yr more than your current ${fmt(currentAnnual)}/yr.`
+            : `You're already contributing ${fmt(currentAnnual)}/yr — on track or ahead.`
+        }`
+      );
+    }
+  } else if (full?.achieved) {
+    tips.push(`You've reached your Full FIRE number (${fmt(full.targetNumber)}). Congratulations — you are financially independent on these assumptions.`);
+  }
+
+  // 3. Tax diversification (account-mix awareness)
+  const total = accounts.reduce((s, a) => s + a.balance, 0);
+  if (total > 0) {
+    const byTreatment: Record<string, number> = { pretax: 0, roth: 0, taxable: 0, hsa: 0 };
+    accounts.forEach(a => { byTreatment[getTaxTreatment(a.type)] += a.balance; });
+    const pct = (k: string) => Math.round((byTreatment[k] / total) * 100);
+    const rothPct = pct('roth');
+    const pretaxPct = pct('pretax');
+    if (rothPct < 15) {
+      tips.push(
+        `Only ~${rothPct}% of your portfolio is in Roth/tax-free accounts. Building more Roth gives you tax-free, RMD-free flexibility and helps manage taxable income in retirement (also useful for early-retirement ACA subsidies).`
+      );
+    } else if (pretaxPct > 80) {
+      tips.push(
+        `~${pretaxPct}% of your portfolio is pre-tax. Large traditional balances drive Required Minimum Distributions after 73 — consider Roth contributions or conversions to spread the future tax bill.`
+      );
+    } else {
+      tips.push(
+        `Your tax mix looks reasonably diversified (~${pretaxPct}% pre-tax, ~${rothPct}% Roth). That flexibility helps you control taxable income year to year in retirement.`
+      );
+    }
+  }
+
+  // 4. Sequence-of-returns risk near retirement
+  if (years <= 10 && years > 0) {
+    tips.push(
+      `You're within ${years} years of retirement. This is when sequence-of-returns risk bites hardest — consider holding 1–3 years of expenses in cash/bonds so a downturn doesn't force selling at a low.`
+    );
+  }
+
+  // 5. Always-true fundamentals
+  tips.push(
+    `Capture your full employer match first — it's an immediate ~50–100% return and the match always lands in a pre-tax account regardless of your Roth/Traditional choice.`
+  );
+  tips.push(
+    `The 4% rule is a useful rule of thumb, not a guarantee. A lower withdrawal rate (3–3.5%) is safer for very long (early) retirements; you can raise it later if markets cooperate.`
+  );
+
+  return tips;
+}

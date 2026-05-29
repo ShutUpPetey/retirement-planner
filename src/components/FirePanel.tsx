@@ -1,0 +1,413 @@
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RTooltip,
+  ResponsiveContainer,
+  ReferenceLine,
+} from 'recharts';
+import { Account, Profile, Assumptions, RetirementResult, FireTarget } from '../types';
+import type { CountryConfig } from '../countries';
+import { calculateFire, generateFireAdvice } from '../utils/fire';
+import { getRothVsTraditionalAdvice } from '../utils/rothVsTraditional';
+import { NumberInput } from './NumberInput';
+import { Tooltip } from './Tooltip';
+
+interface FirePanelProps {
+  accounts: Account[];
+  profile: Profile;
+  assumptions: Assumptions;
+  countryConfig: CountryConfig;
+  retirement: RetirementResult;
+  onAssumptionsChange: (assumptions: Assumptions) => void;
+  isDarkMode?: boolean;
+}
+
+const inputClassName =
+  'w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white';
+
+const TARGET_COLORS: Record<string, string> = {
+  full: '#2563eb',
+  lean: '#d97706',
+  fat: '#7c3aed',
+  barista: '#059669',
+};
+
+export function FirePanel({
+  accounts,
+  profile,
+  assumptions,
+  countryConfig,
+  retirement,
+  onAssumptionsChange,
+  isDarkMode = false,
+}: FirePanelProps) {
+  const fire = calculateFire(accounts, profile, assumptions);
+  const advice = getRothVsTraditionalAdvice(profile, assumptions, countryConfig, retirement);
+  const tips = generateFireAdvice(fire, accounts, profile, assumptions);
+
+  const fmt = (n: number) =>
+    new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: countryConfig.currency || 'USD',
+      maximumFractionDigits: 0,
+    }).format(Math.round(n));
+
+  const pct = (r: number) => `${(r * 100).toFixed(1)}%`;
+
+  const update = (field: keyof Assumptions, value: number) =>
+    onAssumptionsChange({ ...assumptions, [field]: value });
+
+  const axisColor = isDarkMode ? '#9ca3af' : '#6b7280';
+  const gridColor = isDarkMode ? '#374151' : '#e5e7eb';
+
+  const compactCurrency = (v: number) => {
+    if (Math.abs(v) >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
+    if (Math.abs(v) >= 1_000) return `$${(v / 1_000).toFixed(0)}K`;
+    return `$${v.toFixed(0)}`;
+  };
+
+  const adviceBadge =
+    advice.recommendation === 'roth'
+      ? { text: 'Roth', cls: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300' }
+      : advice.recommendation === 'traditional'
+      ? { text: 'Traditional', cls: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300' }
+      : { text: 'Mixed', cls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' };
+
+  const refTargets = fire.targets.filter((t) => t.id !== 'coast');
+
+  return (
+    <div className="space-y-6">
+      {/* Adjustable inputs */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Adjust Your FIRE Inputs</h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          Tweak these to see how your targets and projection change. Changes are saved automatically.
+        </p>
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Annual Spending Goal
+              <Tooltip text="Desired annual spending in retirement, in today's dollars. Drives every FIRE number." />
+            </label>
+            <NumberInput
+              value={assumptions.annualSpendingGoal ?? 60000}
+              onChange={(v) => update('annualSpendingGoal', v)}
+              min={0}
+              defaultValue={60000}
+              className={inputClassName}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Safe Withdrawal Rate (%)
+              <Tooltip text="Percentage of portfolio you withdraw each year. The classic rule is 4%." />
+            </label>
+            <NumberInput
+              value={assumptions.safeWithdrawalRate}
+              onChange={(v) => update('safeWithdrawalRate', v)}
+              min={1}
+              max={10}
+              isPercentage
+              decimals={1}
+              defaultValue={0.04}
+              className={inputClassName}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Barista Income
+              <Tooltip text="Annual part-time income in semi-retirement, today's dollars. Used for Barista FIRE." />
+            </label>
+            <NumberInput
+              value={assumptions.baristaAnnualIncome ?? 20000}
+              onChange={(v) => update('baristaAnnualIncome', v)}
+              min={0}
+              defaultValue={20000}
+              className={inputClassName}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Lean FIRE (% of spending)
+              <Tooltip text="A leaner lifestyle as a share of your spending goal. 70% is typical." />
+            </label>
+            <NumberInput
+              value={assumptions.leanMultiplier ?? 0.7}
+              onChange={(v) => update('leanMultiplier', v)}
+              min={10}
+              max={100}
+              isPercentage
+              decimals={0}
+              defaultValue={0.7}
+              className={inputClassName}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Fat FIRE (% of spending)
+              <Tooltip text="A more generous lifestyle as a share of your spending goal. 160% is typical." />
+            </label>
+            <NumberInput
+              value={assumptions.fatMultiplier ?? 1.6}
+              onChange={(v) => update('fatMultiplier', v)}
+              min={100}
+              max={500}
+              isPercentage
+              decimals={0}
+              defaultValue={1.6}
+              className={inputClassName}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* FIRE overview */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">FIRE Targets</h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          All figures are in today's dollars. Based on a {pct(assumptions.safeWithdrawalRate)} safe
+          withdrawal rate, a {fmt(fire.annualSpending)} annual spending goal, and an inflation-adjusted
+          return of {pct(fire.realReturnRate)} ({pct(fire.nominalReturnRate)} nominal).
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {fire.targets.map((t) => (
+            <FireCard key={t.id} target={t} fmt={fmt} currentAge={profile.currentAge} />
+          ))}
+        </div>
+
+        <div className="mt-4 text-sm text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
+          <span className="font-medium">Current invested:</span> {fmt(fire.currentInvested)}
+          {fire.coastAchieveAge !== null ? (
+            <>
+              {' '}— if you stopped contributing today, your savings alone would reach your Full FIRE
+              number by <span className="font-medium">age {fire.coastAchieveAge}</span>.
+            </>
+          ) : (
+            <>
+              {' '}— current savings alone won't reach your Full FIRE number by age 100 without further
+              contributions.
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Projection chart */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+          Portfolio Projection vs FIRE Targets
+        </h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          Your projected portfolio in today's dollars (real growth), contributing until age{' '}
+          {profile.retirementAge}. Dashed lines mark each FIRE number.
+        </p>
+        <div style={{ width: '100%', height: 340 }}>
+          <ResponsiveContainer>
+            <LineChart data={fire.projection} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+              <XAxis
+                dataKey="age"
+                stroke={axisColor}
+                tick={{ fill: axisColor, fontSize: 12 }}
+                label={{ value: 'Age', position: 'insideBottom', offset: -2, fill: axisColor, fontSize: 12 }}
+              />
+              <YAxis
+                stroke={axisColor}
+                tick={{ fill: axisColor, fontSize: 12 }}
+                tickFormatter={compactCurrency}
+                width={64}
+              />
+              <RTooltip
+                formatter={(value) => [fmt(Number(value)), 'Portfolio']}
+                labelFormatter={(label) => `Age ${label}`}
+                contentStyle={{
+                  backgroundColor: isDarkMode ? '#1f2937' : '#ffffff',
+                  border: `1px solid ${gridColor}`,
+                  borderRadius: 8,
+                  color: isDarkMode ? '#f9fafb' : '#111827',
+                }}
+              />
+              <ReferenceLine
+                x={profile.retirementAge}
+                stroke={axisColor}
+                strokeDasharray="2 4"
+                label={{ value: 'Retire', position: 'top', fill: axisColor, fontSize: 11 }}
+              />
+              {refTargets.map((t) => (
+                <ReferenceLine
+                  key={t.id}
+                  y={t.targetNumber}
+                  stroke={TARGET_COLORS[t.id] || axisColor}
+                  strokeDasharray="6 4"
+                  label={{
+                    value: t.label,
+                    position: 'right',
+                    fill: TARGET_COLORS[t.id] || axisColor,
+                    fontSize: 11,
+                  }}
+                />
+              ))}
+              <Line
+                type="monotone"
+                dataKey="balance"
+                stroke="#0ea5e9"
+                strokeWidth={2.5}
+                dot={false}
+                name="Portfolio"
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+          {refTargets.map((t) => (
+            <span key={t.id} className="flex items-center gap-1.5">
+              <span
+                className="inline-block w-3 h-0.5"
+                style={{ backgroundColor: TARGET_COLORS[t.id] || axisColor }}
+              />
+              {t.label}: {fmt(t.targetNumber)}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* General advice */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Guidance For Your Plan</h3>
+        <ul className="space-y-3">
+          {tips.map((tip, i) => (
+            <li key={i} className="flex gap-3 text-sm text-gray-700 dark:text-gray-300">
+              <span className="flex-shrink-0 mt-0.5 w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-xs font-semibold flex items-center justify-center">
+                {i + 1}
+              </span>
+              <span>{tip}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* Roth vs Traditional advice */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Roth vs Traditional</h3>
+          {advice.available && (
+            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${adviceBadge.cls}`}>
+              {adviceBadge.text}
+            </span>
+          )}
+        </div>
+        <p className="text-gray-900 dark:text-white font-medium mb-4">{advice.headline}</p>
+
+        {advice.available && (
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
+              <div className="text-xs text-gray-500 dark:text-gray-400">Current marginal rate</div>
+              <div className="text-xl font-semibold text-gray-900 dark:text-white">
+                {pct(advice.currentMarginalRate)}
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                at income {fmt(advice.currentTaxableIncome)}
+              </div>
+            </div>
+            <div className="bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
+              <div className="text-xs text-gray-500 dark:text-gray-400">Est. retirement rate</div>
+              <div className="text-xl font-semibold text-gray-900 dark:text-white">
+                {pct(advice.retirementMarginalRate)}
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                at income {fmt(advice.retirementTaxableIncome)}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <ul className="space-y-2 mb-4">
+          {advice.reasoning.map((r, i) => (
+            <li key={i} className="flex gap-2 text-sm text-gray-700 dark:text-gray-300">
+              <span className="text-blue-500 mt-0.5">•</span>
+              <span>{r}</span>
+            </li>
+          ))}
+        </ul>
+
+        {advice.caveats.length > 0 && (
+          <details className="text-sm text-gray-500 dark:text-gray-400">
+            <summary className="cursor-pointer font-medium text-gray-600 dark:text-gray-300">
+              Important caveats
+            </summary>
+            <ul className="mt-2 space-y-1 pl-4 list-disc">
+              {advice.caveats.map((c, i) => (
+                <li key={i}>{c}</li>
+              ))}
+            </ul>
+          </details>
+        )}
+
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-4">
+          This is educational guidance, not financial advice. Consult a qualified professional for your
+          situation.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function FireCard({
+  target,
+  fmt,
+  currentAge,
+}: {
+  target: FireTarget;
+  fmt: (n: number) => string;
+  currentAge: number;
+}) {
+  const achieved = target.achieved;
+  return (
+    <div
+      className={`rounded-lg border p-4 ${
+        achieved
+          ? 'border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20'
+          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'
+      }`}
+    >
+      <div className="flex items-center justify-between mb-1">
+        <span className="font-semibold text-gray-900 dark:text-white">{target.label}</span>
+        {achieved ? (
+          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300">
+            Achieved
+          </span>
+        ) : (
+          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+            In progress
+          </span>
+        )}
+      </div>
+      <div className="text-2xl font-bold text-gray-900 dark:text-white">{fmt(target.targetNumber)}</div>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 mb-2">{target.description}</p>
+      <div className="text-sm">
+        {achieved ? (
+          <span className="text-green-700 dark:text-green-400">
+            {fmt(target.surplusOrShortfall)} over target
+          </span>
+        ) : (
+          <span className="text-gray-600 dark:text-gray-300">
+            {fmt(-target.surplusOrShortfall)} to go
+            {target.achieveAge !== null ? (
+              <>
+                {' '}— on track by <span className="font-medium">age {target.achieveAge}</span>
+              </>
+            ) : (
+              <> — not reached by age 100 on current path</>
+            )}
+          </span>
+        )}
+      </div>
+      {achieved && target.achieveAge !== null && target.achieveAge < currentAge + 1 && (
+        <div className="text-xs text-green-700 dark:text-green-400 mt-1">You're already there.</div>
+      )}
+    </div>
+  );
+}
