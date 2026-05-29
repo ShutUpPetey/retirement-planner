@@ -120,8 +120,11 @@ export function calculateAccumulation(
       else contributionDelta += effectiveAmount;
     }
 
-    // Scale contribution delta proportionally per account
-    const totalBaseContribution = accounts.reduce((sum, a) => sum + contributions[a.id], 0);
+    // Life event expense/income deltas only apply to discretionary contributions.
+    // IRS-max accounts are automatic payroll deductions — they are unaffected by
+    // spending events like college tuition or vacations.
+    const discretionaryAccounts = accounts.filter(a => !a.useIrsMaxContribution);
+    const discretionaryBase = discretionaryAccounts.reduce((sum, a) => sum + contributions[a.id], 0);
 
     // Track what was actually used this year (for accurate table display)
     const yearActualContribs: Record<string, number> = {};
@@ -135,14 +138,21 @@ export function calculateAccumulation(
       const balanceAfterReturn = currentBalance * (1 + account.returnRate);
 
       // 2. Effective contribution for this year
-      // IRS-max accounts recalculate the limit fresh each year (ignore stored growth).
       const irsMax = account.useIrsMaxContribution
         ? getIrsMaxContribution(account, countryConfig, i, inflationRate)
         : null;
-      const baseForYear = irsMax !== null ? irsMax : currentContribution;
 
-      const accountShare = totalBaseContribution > 0 ? currentContribution / totalBaseContribution : 1 / accounts.length;
-      const adjustedContribution = Math.max(0, baseForYear + contributionDelta * accountShare);
+      let adjustedContribution: number;
+      if (irsMax !== null) {
+        // IRS-max: always contribute the inflation-grown limit regardless of life events
+        adjustedContribution = irsMax;
+      } else {
+        // Discretionary: spread the life-event delta across non-IRS-max accounts
+        const accountShare = discretionaryBase > 0
+          ? currentContribution / discretionaryBase
+          : discretionaryAccounts.length > 0 ? 1 / discretionaryAccounts.length : 0;
+        adjustedContribution = Math.max(0, currentContribution + contributionDelta * accountShare);
+      }
 
       // Salary grows at the same rate as contributions (both are driven by compensation).
       const salaryGrowthFactor = Math.pow(1 + account.contributionGrowthRate, i);
