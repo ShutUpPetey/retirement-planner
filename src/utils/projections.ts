@@ -36,22 +36,29 @@ function getIrsMaxContribution(
  * Calculate employer match for accounts that support it.
  *
  * Two cap modes:
- *  - 'salary_percent': cap = annualSalary × employerMatchLimitPercent (grows with salary)
- *  - 'dollar' (default / legacy): cap applied to the match dollar amount directly
+ *  - 'salary_percent': cap = (annualSalary × salaryGrowthFactor) × employerMatchLimitPercent
+ *    salaryGrowthFactor = (1 + contributionGrowthRate)^yearIndex so the salary cap grows
+ *    at the same rate as the employee's contributions year-over-year.
+ *  - 'dollar' (default / legacy): fixed nominal dollar cap — does not grow.
  *
  * Formula (both modes): min(contribution, matchCap) × matchRate
  */
-function calculateEmployerMatch(account: Account, effectiveContribution: number): number {
+function calculateEmployerMatch(
+  account: Account,
+  effectiveContribution: number,
+  salaryGrowthFactor = 1,
+): number {
   const supportsMatch = is401k(account.type) || account.type === 'employer_rrsp';
   if (!supportsMatch || !account.employerMatchPercent) return 0;
 
   if (account.employerMatchLimitType === 'salary_percent') {
     if (!account.annualSalary || !account.employerMatchLimitPercent) return 0;
-    const salaryMatchCap = account.annualSalary * account.employerMatchLimitPercent;
+    const effectiveSalary = account.annualSalary * salaryGrowthFactor;
+    const salaryMatchCap = effectiveSalary * account.employerMatchLimitPercent;
     return Math.min(effectiveContribution, salaryMatchCap) * account.employerMatchPercent;
   }
 
-  // Legacy dollar cap: min(contribution × matchRate, dollarLimit)
+  // Legacy dollar cap: fixed nominal amount, does not grow.
   if (!account.employerMatchLimit) return 0;
   return Math.min(effectiveContribution * account.employerMatchPercent, account.employerMatchLimit);
 }
@@ -130,7 +137,9 @@ export function calculateAccumulation(
       const accountShare = totalBaseContribution > 0 ? currentContribution / totalBaseContribution : 1 / accounts.length;
       const adjustedContribution = Math.max(0, baseForYear + contributionDelta * accountShare);
 
-      const employerMatch = calculateEmployerMatch(account, adjustedContribution);
+      // Salary grows at the same rate as contributions (both are driven by compensation).
+      const salaryGrowthFactor = Math.pow(1 + account.contributionGrowthRate, i);
+      const employerMatch = calculateEmployerMatch(account, adjustedContribution, salaryGrowthFactor);
       const totalContribution = adjustedContribution + employerMatch;
 
       // Update balance
@@ -227,7 +236,8 @@ export function calculateTotalContributions(
       const effectiveContrib = account.useIrsMaxContribution && countryConfig
         ? getIrsMaxContribution(account, countryConfig, i, inflationRate)
         : yearlyContribution;
-      const employerMatch = calculateEmployerMatch(account, effectiveContrib);
+      const salaryGrowthFactor = Math.pow(1 + account.contributionGrowthRate, i);
+      const employerMatch = calculateEmployerMatch(account, effectiveContrib, salaryGrowthFactor);
       totalContribution += effectiveContrib + employerMatch;
       if (!account.useIrsMaxContribution) {
         yearlyContribution *= (1 + account.contributionGrowthRate);

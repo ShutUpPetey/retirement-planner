@@ -209,9 +209,12 @@ export function MathDebugPanel({
                 {hasMatch ? (
                   <>
                     <FormulaRow
-                      label="Employer match"
+                      label="Employer match (year 1)"
                       formula={matchFormula}
                       result={fmt(match)}
+                      note={account.employerMatchLimitType === 'salary_percent'
+                        ? `Salary cap grows at ${pct(account.contributionGrowthRate)} each year (same as contribution growth)`
+                        : 'Dollar cap is fixed — stays this amount every year'}
                     />
                     <Divider />
                     <FormulaRow
@@ -336,6 +339,38 @@ export function MathDebugPanel({
               </p>
             </Section>
           )}
+
+          {/* ── Inflation & growth audit ── */}
+          <Section title="📋 What grows and what doesn't">
+            <div className="space-y-1 text-sm">
+              {[
+                { label: 'Your contributions', grows: true, how: `${pct(accounts[0]?.contributionGrowthRate ?? 0.03)}/yr contribution growth rate` },
+                { label: 'IRS / CRA contribution limit', grows: true, how: `inflation (${pct(assumptions.inflationRate)}/yr), rounded to $500` },
+                { label: 'Salary for % match cap', grows: true, how: `contribution growth rate — salary and contributions move together` },
+                { label: 'Dollar match cap', grows: false, how: 'fixed nominal amount you entered' },
+                { label: 'Retirement spending target', grows: true, how: `inflation (${pct(assumptions.inflationRate)}/yr) each retirement year` },
+                { label: 'Social Security / gov\'t benefits', grows: true, how: `inflation (${pct(assumptions.inflationRate)}/yr)` },
+                { label: 'Income streams', grows: true, how: `inflation (${pct(assumptions.inflationRate)}/yr)` },
+                { label: 'Life events (inflation on)', grows: true, how: `inflation (${pct(assumptions.inflationRate)}/yr)` },
+                { label: 'Life events (inflation off)', grows: false, how: 'fixed amount you entered' },
+                {
+                  label: 'Tax bracket thresholds',
+                  grows: assumptions.adjustTaxBracketsForInflation !== false,
+                  how: assumptions.adjustTaxBracketsForInflation !== false
+                    ? `inflation (${pct(assumptions.inflationRate)}/yr) — toggle in Assumptions`
+                    : 'static 2026 brackets (toggle in Assumptions to index)',
+                },
+              ].map(({ label, grows, how }) => (
+                <div key={label} className="flex items-start gap-2">
+                  <span className={`mt-0.5 text-xs font-bold flex-shrink-0 w-4 ${grows ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                    {grows ? '↑' : '—'}
+                  </span>
+                  <span className="text-gray-700 dark:text-gray-300 min-w-[220px]">{label}</span>
+                  <span className="text-gray-400 dark:text-gray-500 text-xs">{how}</span>
+                </div>
+              ))}
+            </div>
+          </Section>
 
           {/* ── Assumptions reference ── */}
           <Section title="⚙️ Assumptions in Use">

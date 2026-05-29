@@ -302,8 +302,8 @@ export function AccountForm({ account, profile, onSave, onCancel }: AccountFormP
               }))}
               className={inputClassName}
             >
-              <option value="dollar">Dollar amount (fixed cap)</option>
-              <option value="salary_percent">% of salary (grows with income)</option>
+              <option value="dollar">Dollar amount (fixed — does not grow)</option>
+              <option value="salary_percent">% of salary (grows with contribution growth rate)</option>
             </select>
           </div>
 
@@ -359,10 +359,14 @@ export function AccountForm({ account, profile, onSave, onCancel }: AccountFormP
           {(formData.employerMatchPercent ?? 0) > 0 && (
             matchPreview > 0 ? (
               <p className="text-sm text-green-700 dark:text-green-400">
-                Employer match: <strong>${matchPreview.toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr</strong>
-                {formData.employerMatchLimitType === 'salary_percent' && formData.annualSalary && formData.employerMatchLimitPercent && (
-                  <span className="text-gray-500 dark:text-gray-400 font-normal">
-                    {' '}(cap: ${(formData.annualSalary * formData.employerMatchLimitPercent).toLocaleString(undefined, { maximumFractionDigits: 0 })})
+                Match this year: <strong>${matchPreview.toLocaleString(undefined, { maximumFractionDigits: 0 })}/yr</strong>
+                {formData.employerMatchLimitType === 'salary_percent' && formData.annualSalary && formData.employerMatchLimitPercent ? (
+                  <span className="text-gray-500 dark:text-gray-400 font-normal text-xs ml-1">
+                    · salary cap grows with your {((formData.contributionGrowthRate ?? 0) * 100).toFixed(1)}% contribution growth rate
+                  </span>
+                ) : (
+                  <span className="text-gray-500 dark:text-gray-400 font-normal text-xs ml-1">
+                    · fixed dollar cap (stays flat in future years)
                   </span>
                 )}
               </p>
