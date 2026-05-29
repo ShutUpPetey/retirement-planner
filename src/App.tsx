@@ -30,6 +30,7 @@ import {
 } from "./utils/dataTransfer";
 import { DataTableAccumulation } from "./components/DataTableAccumulation";
 import { DataTableWithdrawal } from "./components/DataTableWithdrawal";
+import { OnboardingWizard } from "./components/OnboardingWizard";
 import { v4 as uuidv4 } from "uuid";
 
 // Default accounts for US
@@ -169,6 +170,12 @@ function AppContent() {
   // Dark mode
   const [isDarkMode, toggleDarkMode] = useDarkMode();
 
+  // Detect first-time user: no saved accounts in localStorage
+  const isFirstVisit = !window.localStorage.getItem(
+    "retirement-planner-accounts",
+  );
+  const [showOnboarding, setShowOnboarding] = useState(isFirstVisit);
+
   // UI state (not persisted)
   const [activeTab, setActiveTab] = useState<TabType>("summary");
   const [expandedSection, setExpandedSection] = useState<string | null>(
@@ -283,6 +290,22 @@ function AppContent() {
     { id: "methodology", label: "Methodology" },
   ];
 
+  const handleOnboardingComplete = useCallback(
+    (
+      newProfile: Profile,
+      newAccounts: Account[],
+      newAssumptions: Assumptions,
+      newIncomeStreams: IncomeStream[],
+    ) => {
+      setProfile(newProfile);
+      setAccounts(newAccounts);
+      setAssumptions(newAssumptions);
+      setIncomeStreams(newIncomeStreams);
+      setShowOnboarding(false);
+    },
+    [setProfile, setAccounts, setAssumptions, setIncomeStreams],
+  );
+
   return (
     <Layout
       isDarkMode={isDarkMode}
@@ -292,6 +315,15 @@ function AppContent() {
       onExportCsv={handleExportCsv}
       onImport={handleImport}
     >
+      {/* Onboarding Wizard */}
+      {showOnboarding && (
+        <OnboardingWizard
+          isDarkMode={isDarkMode}
+          onComplete={handleOnboardingComplete}
+          onSkip={() => setShowOnboarding(false)}
+        />
+      )}
+
       {/* Reset Confirmation Modal */}
       {showResetConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">

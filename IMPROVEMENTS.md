@@ -9,7 +9,7 @@ Effort: **S** = 1–2 days · **M** = 3–7 days · **L** = 1–3 weeks · **XL*
 ## Backlog
 
 ### 1. Onboarding wizard · Effort: S · UX & sharing
-- [ ] **Done**
+- [x] **Done**
 
 **What it does**
 For new users with no saved data, a 3-step modal: (1) age + retirement age, (2) rough savings + income, (3) country + filing status. Auto-generates realistic accounts and meaningful defaults. Goal: meaningful numbers in under 2 minutes.
