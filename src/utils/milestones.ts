@@ -4,6 +4,7 @@ import {
   AccumulationResult,
   RetirementResult,
   IncomeStream,
+  LifeEvent,
   Milestone,
   getTaxTreatment,
 } from '../types';
@@ -24,6 +25,7 @@ export function deriveMilestones(
   earlyAccess: EarlyAccessAnalysis | null,
   incomeStreams: IncomeStream[],
   countryConfig: CountryConfig,
+  lifeEvents: LifeEvent[] = [],
 ): Milestone[] {
   const milestones: Milestone[] = [];
 
@@ -179,6 +181,27 @@ export function deriveMilestones(
         category: 'portfolio',
         isWarning: true,
         detail: 'Total portfolio balance reaches zero — spending exceeds remaining assets',
+      });
+    }
+  }
+
+  // --- Life events ---
+  for (const event of lifeEvents) {
+    const amountLabel = event.type === 'lump_sum'
+      ? `$${event.amount.toLocaleString()} one-time withdrawal`
+      : `$${event.amount.toLocaleString()}/yr ${event.type}`;
+    const adjustLabel = event.inflationAdjust ? ' (inflation-adjusted)' : '';
+    milestones.push({
+      age: event.startAge,
+      label: event.name,
+      category: 'life_event',
+      detail: `${amountLabel}${adjustLabel}`,
+    });
+    if (event.endAge && event.endAge <= profile.lifeExpectancy) {
+      milestones.push({
+        age: event.endAge,
+        label: `${event.name} ends`,
+        category: 'life_event',
       });
     }
   }

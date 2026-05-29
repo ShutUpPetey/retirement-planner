@@ -25,11 +25,12 @@ const METRICS: { id: Metric; label: string }[] = [
 ];
 
 const CAT_COLOR: Record<MilestoneCategory, string> = {
-  work:       '#3b82f6',
-  retirement: '#22c55e',
-  benefits:   '#a855f7',
-  portfolio:  '#f97316',
-  tax:        '#eab308',
+  work:        '#3b82f6',
+  retirement:  '#22c55e',
+  benefits:    '#a855f7',
+  portfolio:   '#f97316',
+  tax:         '#eab308',
+  life_event:  '#f59e0b',
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────────

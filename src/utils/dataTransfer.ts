@@ -3,6 +3,7 @@ import {
   Profile,
   Assumptions,
   IncomeStream,
+  LifeEvent,
   AccumulationResult,
   RetirementResult,
 } from '../types';
@@ -20,6 +21,7 @@ export interface BackupPayload {
     profile: Profile;
     assumptions: Assumptions;
     incomeStreams: IncomeStream[];
+    lifeEvents: LifeEvent[];
   };
 }
 
@@ -44,14 +46,15 @@ export function exportBackup(
   accounts: Account[],
   profile: Profile,
   assumptions: Assumptions,
-  incomeStreams: IncomeStream[]
+  incomeStreams: IncomeStream[],
+  lifeEvents: LifeEvent[] = []
 ): void {
   const payload: BackupPayload = {
     kind: BACKUP_KIND,
     version: BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
     country: profile.country ?? 'US',
-    data: { accounts, profile, assumptions, incomeStreams },
+    data: { accounts, profile, assumptions, incomeStreams, lifeEvents },
   };
   triggerDownload(
     JSON.stringify(payload, null, 2),
@@ -109,6 +112,7 @@ export interface ParsedBackup {
   profile: Profile;
   assumptions: Assumptions;
   incomeStreams: IncomeStream[];
+  lifeEvents: LifeEvent[];
   country: string;
 }
 
@@ -136,6 +140,7 @@ export function parseBackup(jsonText: string): ParsedBackup {
     profile: d.profile,
     assumptions: d.assumptions,
     incomeStreams: Array.isArray(d.incomeStreams) ? d.incomeStreams : [],
+    lifeEvents: Array.isArray(d.lifeEvents) ? d.lifeEvents : [],
     country: obj.country ?? d.profile.country ?? 'US',
   };
 }

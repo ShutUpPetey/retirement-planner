@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Account, Profile, Assumptions, AccumulationResult, RetirementResult, IncomeStream } from '../types';
+import { Account, Profile, Assumptions, AccumulationResult, RetirementResult, IncomeStream, LifeEvent } from '../types';
 import { calculateAccumulation } from '../utils/projections';
 import { calculateWithdrawals } from '../utils/withdrawals';
 import type { CountryConfig } from '../countries';
@@ -14,7 +14,8 @@ export function useRetirementCalc(
   profile: Profile,
   assumptions: Assumptions,
   countryConfig: CountryConfig,
-  incomeStreams: IncomeStream[]
+  incomeStreams: IncomeStream[],
+  lifeEvents: LifeEvent[] = []
 ): UseRetirementCalcResult {
   const accumulation = useMemo(() => {
     if (accounts.length === 0) {
@@ -25,8 +26,8 @@ export function useRetirementCalc(
         breakdownByGroup: {},
       };
     }
-    return calculateAccumulation(accounts, profile, countryConfig);
-  }, [accounts, profile, countryConfig]);
+    return calculateAccumulation(accounts, profile, countryConfig, lifeEvents, assumptions.inflationRate);
+  }, [accounts, profile, countryConfig, lifeEvents, assumptions.inflationRate]);
 
   const retirement = useMemo(() => {
     if (accounts.length === 0 || accumulation.totalAtRetirement === 0) {
@@ -39,8 +40,8 @@ export function useRetirementCalc(
         accountDepletionAges: {},
       };
     }
-    return calculateWithdrawals(accounts, profile, assumptions, accumulation, countryConfig, incomeStreams);
-  }, [accounts, profile, assumptions, accumulation, countryConfig, incomeStreams]);
+    return calculateWithdrawals(accounts, profile, assumptions, accumulation, countryConfig, incomeStreams, lifeEvents);
+  }, [accounts, profile, assumptions, accumulation, countryConfig, incomeStreams, lifeEvents]);
 
   return { accumulation, retirement };
 }

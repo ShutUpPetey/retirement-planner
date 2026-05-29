@@ -8,7 +8,7 @@ import {
   getTaxTreatment,
   isTraditional,
 } from '../types';
-import type { IncomeStream } from '../types';
+import type { IncomeStream, LifeEvent } from '../types';
 import {
   calculateTotalFederalTax,
   calculateStateTax,
@@ -81,7 +81,8 @@ export function calculateWithdrawals(
   assumptions: Assumptions,
   accumulationResult: AccumulationResult,
   countryConfig?: CountryConfig,
-  incomeStreams?: IncomeStream[]
+  incomeStreams?: IncomeStream[],
+  lifeEvents?: LifeEvent[]
 ): RetirementResult {
   const retirementYears = profile.lifeExpectancy - profile.retirementAge;
   const currentYear = new Date().getFullYear();
@@ -156,7 +157,25 @@ export function calculateWithdrawals(
       tax_free: streamResult.byTaxTreatment.tax_free * inflationMultiplier,
     };
 
-    const totalRetirementIncome = governmentBenefitIncome + inflatedStreamIncome;
+    // Apply life events to spending target and retirement income for this year
+    let yearTargetSpending = targetSpending;
+    let yearExtraIncome = 0;
+    for (const event of lifeEvents ?? []) {
+      const effectiveAmount = event.inflationAdjust
+        ? event.amount * inflationMultiplier
+        : event.amount;
+      if (event.type === 'expense') {
+        const active = age >= event.startAge && (event.endAge === undefined || age <= event.endAge);
+        if (active) yearTargetSpending += effectiveAmount;
+      } else if (event.type === 'income') {
+        const active = age >= event.startAge && (event.endAge === undefined || age <= event.endAge);
+        if (active) yearExtraIncome += effectiveAmount;
+      } else if (event.type === 'lump_sum' && age === event.startAge) {
+        yearTargetSpending += effectiveAmount;
+      }
+    }
+
+    const totalRetirementIncome = governmentBenefitIncome + inflatedStreamIncome + yearExtraIncome;
 
     // Calculate minimum required withdrawals (RMD/RRIF) for each traditional account
     // NOTE: Per IRS rules, RMDs are calculated per-account, not on total balance.
@@ -185,7 +204,7 @@ export function calculateWithdrawals(
     const withdrawals = performTaxOptimizedWithdrawal(
       accountStates,
       accounts,  // NEW: pass full accounts array
-      targetSpending,
+      yearTargetSpending,
       rmdAmount,
       totalRetirementIncome,
       profile,
@@ -283,7 +302,7 @@ export function calculateWithdrawals(
       stateTax,
       totalTax,
       afterTaxIncome,
-      targetSpending,
+      targetSpending: yearTargetSpending,
       rmdAmount,
       totalRemainingBalance: accountStates.reduce((sum, acc) => sum + acc.balance, 0),
       earlyWithdrawalPenalties: penalties,
