@@ -36,6 +36,9 @@ import { ChartPlan } from "./components/ChartPlan";
 import { ChartTimeline } from "./components/ChartTimeline";
 import { ScenarioComparison } from "./components/ScenarioComparison";
 import { MathDebugPanel } from "./components/MathDebugPanel";
+import { ChartMonteCarlo } from "./components/ChartMonteCarlo";
+import { useMonteCarlo } from "./hooks/useMonteCarlo";
+import type { MonteCarloConfig } from "./types";
 import { deriveMilestones } from "./utils/milestones";
 import { calculateFire, calculateEarlyAccess } from "./utils/fire";
 import { useScenarios } from "./hooks/useScenarios";
@@ -233,6 +236,31 @@ function AppContent() {
       lifeEvents,
     );
   }, [accounts, profile, assumptions, countryConfig, incomeStreams, accumulation, retirement, lifeEvents]);
+
+  // Monte Carlo: overlay randomized returns on the deterministic withdrawal schedule
+  const monteCarloConfig: MonteCarloConfig | null = useMemo(() => {
+    if (accounts.length === 0 || accumulation.totalAtRetirement <= 0 || retirement.yearlyWithdrawals.length === 0) {
+      return null;
+    }
+    return {
+      startingPortfolio: accumulation.totalAtRetirement,
+      withdrawalSchedule: retirement.yearlyWithdrawals.map((y) => y.totalWithdrawal),
+      retirementReturnRate: assumptions.retirementReturnRate,
+      volatility: assumptions.returnVolatility ?? 0.1,
+      numRuns: 1000,
+      startAge: profile.retirementAge,
+    };
+  }, [accounts.length, accumulation.totalAtRetirement, retirement.yearlyWithdrawals, assumptions.retirementReturnRate, assumptions.returnVolatility, profile.retirementAge]);
+
+  const { result: monteCarloResult, isRunning: mcRunning } = useMonteCarlo(monteCarloConfig);
+
+  const deterministicByAge = useMemo(() => {
+    const map: Record<number, number> = {};
+    for (const y of retirement.yearlyWithdrawals) {
+      map[y.age] = Math.max(0, y.totalRemainingBalance);
+    }
+    return map;
+  }, [retirement.yearlyWithdrawals]);
 
   const handleAddAccount = (account: Account) => {
     setAccounts((prev) => [...prev, account]);
@@ -809,6 +837,30 @@ function AppContent() {
               {/* Retirement Tab */}
               {activeTab === "retirement" && (
                 <div className="space-y-6">
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+                    <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                        Monte Carlo Risk Analysis
+                      </h3>
+                      <span className="text-xs text-gray-400 dark:text-gray-500">
+                        1,000 randomized return sequences
+                      </span>
+                    </div>
+                    {monteCarloResult ? (
+                      <ChartMonteCarlo
+                        result={monteCarloResult}
+                        isRunning={mcRunning}
+                        deterministicByAge={deterministicByAge}
+                        lifeExpectancy={profile.lifeExpectancy}
+                        isDarkMode={isDarkMode}
+                      />
+                    ) : (
+                      <p className="text-sm text-gray-500 dark:text-gray-400 py-8 text-center">
+                        {mcRunning ? "Running simulation…" : "Add accounts to run the simulation."}
+                      </p>
+                    )}
+                  </div>
+
                   <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                       Portfolio Drawdown (Age {profile.retirementAge} to{" "}

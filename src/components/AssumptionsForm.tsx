@@ -173,6 +173,26 @@ export function AssumptionsForm({
 
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Return Volatility (%)
+            <Tooltip text="Annual standard deviation of returns, used by the Monte Carlo simulation. Higher = more market swings. A balanced retirement portfolio is typically 8–12%." />
+          </label>
+          <NumberInput
+            value={assumptions.returnVolatility ?? 0.1}
+            onChange={(val) => handleChange("returnVolatility", val)}
+            min={0}
+            max={40}
+            isPercentage
+            decimals={1}
+            defaultValue={0.1}
+            className={inputClassName}
+          />
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Balanced portfolio: ~10%. Drives Monte Carlo risk analysis.
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Annual Spending Goal ($)
             <Tooltip text="Desired annual spending in retirement, in today's dollars. Drives all FIRE targets." />
           </label>

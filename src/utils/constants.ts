@@ -139,6 +139,7 @@ export const DEFAULT_ASSUMPTIONS = {
   baristaAnnualIncome: 20000,
   adjustTaxBracketsForInflation: true,
   spendingMode: 'swr' as const,
+  returnVolatility: 0.1,
 };
 
 // FIRE spending-level multipliers (applied to the annual spending goal)

@@ -106,6 +106,35 @@ export interface Assumptions {
   fatMultiplier?: number;  // fraction of spending for Fat FIRE, e.g. 1.6
   adjustTaxBracketsForInflation?: boolean; // default true — bracket thresholds grow with inflation
   spendingMode?: 'swr' | 'goal'; // default 'swr' — how retirement spending target is set
+  returnVolatility?: number; // annual stddev of returns for Monte Carlo (decimal); default 0.10
+}
+
+// ---- Monte Carlo simulation ----
+
+export interface MonteCarloConfig {
+  startingPortfolio: number;        // total portfolio at retirement (nominal)
+  withdrawalSchedule: number[];     // nominal portfolio draw per retirement year (from deterministic run)
+  retirementReturnRate: number;     // arithmetic mean annual return (decimal)
+  volatility: number;               // annual stddev of returns (decimal)
+  numRuns: number;
+  startAge: number;                 // retirement age (first year of the schedule)
+}
+
+export interface MonteCarloBand {
+  age: number;
+  p10: number;
+  p25: number;
+  p50: number;
+  p75: number;
+  p90: number;
+}
+
+export interface MonteCarloResult {
+  successRate: number;          // 0..1 — fraction of runs that funded every year
+  bands: MonteCarloBand[];      // per-year percentile portfolio balances
+  numRuns: number;
+  medianEndingBalance: number;  // p50 of final-year balance
+  config: MonteCarloConfig;
 }
 
 // ---- FIRE (Financial Independence / Retire Early) ----

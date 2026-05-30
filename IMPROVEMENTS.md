@@ -122,7 +122,7 @@ localStorage size is manageable if storing only inputs. Comparison view needs to
 ---
 
 ### 6. Monte Carlo simulation · Effort: L · Modeling realism
-- [ ] **Done**
+- [x] **Done**
 
 **What it does**
 Runs 1,000+ randomized return sequences and shows (a) a success probability headline ("87% chance of not running out") and (b) a percentile fan chart (p10/p25/p50/p75/p90 portfolio bands over retirement). The single highest-credibility upgrade for serious planners.
