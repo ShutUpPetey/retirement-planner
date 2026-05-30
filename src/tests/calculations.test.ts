@@ -8,6 +8,7 @@
 import { calculateAccumulation } from '../utils/projections';
 import { calculateWithdrawals } from '../utils/withdrawals';
 import { runMonteCarlo } from '../utils/monteCarlo';
+import { baristaFireNumber } from '../utils/fire';
 import { calculateIncomeStreamBenefits } from '../utils/incomeStreams';
 import {
   calculateFederalIncomeTax,

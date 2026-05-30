@@ -226,6 +226,25 @@ export function AssumptionsForm({
             Today's dollars; used for Barista FIRE
           </p>
         </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Barista Bridge Years
+            <Tooltip text="How many years you'll work part-time before fully retiring. The bridge model grows your portfolio to the Full FIRE number over this period, then it funds spending alone. Set 0 for indefinite part-time income." />
+          </label>
+          <NumberInput
+            value={assumptions.baristaBridgeYears ?? 0}
+            onChange={(val) => handleChange("baristaBridgeYears", val)}
+            min={0}
+            max={40}
+            decimals={0}
+            defaultValue={10}
+            className={inputClassName}
+          />
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Years of part-time work; 0 = indefinite
+          </p>
+        </div>
       </div>
     </div>
   );
