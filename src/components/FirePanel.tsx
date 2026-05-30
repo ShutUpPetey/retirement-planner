@@ -97,6 +97,7 @@ export function FirePanel({
     incomeStreams,
     accumulation,
   );
+  const aca = calculateACA(profile, assumptions, incomeStreams, rothLadder);
 
   const fmt = (n: number) =>
     new Intl.NumberFormat(undefined, {
