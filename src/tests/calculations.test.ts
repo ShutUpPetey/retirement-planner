@@ -7,6 +7,7 @@
 
 import { calculateAccumulation } from '../utils/projections';
 import { calculateWithdrawals } from '../utils/withdrawals';
+import { runMonteCarlo } from '../utils/monteCarlo';
 import { calculateIncomeStreamBenefits } from '../utils/incomeStreams';
 import {
   calculateFederalIncomeTax,
@@ -1871,6 +1872,51 @@ function testIncomeStreamWithdrawals(): void {
 // RUN ALL TESTS
 // =============================================================================
 
+function testMonteCarloSim(): void {
+  section('MONTE CARLO SIMULATION');
+
+  const flatSchedule = new Array(30).fill(40000);
+
+  const zeroVol = runMonteCarlo({
+    startingPortfolio: 1_000_000,
+    withdrawalSchedule: flatSchedule,
+    retirementReturnRate: 0.05,
+    volatility: 0,
+    numRuns: 200,
+    startAge: 65,
+  });
+  const b0 = zeroVol.bands[0];
+  assert(Math.abs(b0.p10 - b0.p90) < 1, 'Zero volatility collapses the fan (p10 == p90)');
+  assert(zeroVol.bands.length === 30, 'Bands length matches schedule length');
+  assert(zeroVol.successRate === 1, 'Healthy plan with zero vol succeeds 100%');
+  assertApprox(b0.p50, 1_008_000, 1, 'Zero-vol year-1 median = (1,000,000 - 40,000) * 1.05');
+
+  const withVol = runMonteCarlo({
+    startingPortfolio: 1_000_000,
+    withdrawalSchedule: flatSchedule,
+    retirementReturnRate: 0.05,
+    volatility: 0.12,
+    numRuns: 2000,
+    startAge: 65,
+  });
+  const mid = withVol.bands[15];
+  assert(
+    mid.p10 <= mid.p25 && mid.p25 <= mid.p50 && mid.p50 <= mid.p75 && mid.p75 <= mid.p90,
+    'Percentile bands are monotonically ordered'
+  );
+  assert(withVol.successRate >= 0 && withVol.successRate <= 1, 'Success rate is a valid probability');
+
+  const underfunded = runMonteCarlo({
+    startingPortfolio: 100_000,
+    withdrawalSchedule: new Array(30).fill(50000),
+    retirementReturnRate: 0.05,
+    volatility: 0.1,
+    numRuns: 500,
+    startAge: 65,
+  });
+  assert(underfunded.successRate < 0.1, 'Severely underfunded plan mostly fails');
+}
+
 function runAllTests(): void {
   console.log('\n' + '🧪 RETIREMENT CALCULATOR MATH TESTS '.padEnd(60, '='));
   console.log('Running comprehensive tests on all calculations...\n');
@@ -1894,6 +1940,7 @@ function runAllTests(): void {
   testEarlyWithdrawalPenalties();
   testIncomeStreamCalculator();
   testIncomeStreamWithdrawals();
+  testMonteCarloSim();
 
   console.log('\n' + '='.repeat(60));
   console.log('TEST SUMMARY');
