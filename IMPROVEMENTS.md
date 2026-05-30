@@ -170,7 +170,7 @@ Historical equity-only returns don't map cleanly to diversified portfolios — n
 ---
 
 ### 8. Roth conversion ladder · Effort: M · Decision tools
-- [ ] **Done**
+- [x] **Done**
 
 **What it does**
 For users retiring before 59.5, shows the optimal annual Roth conversions during low-income early-retirement years — how much to convert to fill the 12% bracket, the tax cost, and projected lifetime tax savings versus doing nothing.
@@ -214,7 +214,7 @@ Well-defined math. Main risk is UI clarity around breakeven framing for married 
 ---
 
 ### 10. ACA subsidy / MAGI modeling · Effort: M · Decision tools
-- [ ] **Done**
+- [x] **Done**
 
 **What it does**
 For early retirees, shows how projected annual income (Roth conversions, SS, withdrawals) affects ACA premium tax credits. Flags "cliff" years where $1 of extra income eliminates thousands in subsidies, and shows the MAGI target to stay under.
