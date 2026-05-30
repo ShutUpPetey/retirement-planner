@@ -65,3 +65,44 @@ Uses `@tailwindcss/vite` plugin. Dark mode requires this CSS directive:
 ### Chart Components
 
 All chart components accept `isDarkMode` prop for proper axis/legend coloring. Pass from App.tsx which manages dark mode state.
+
+## Working Agreement (read before editing)
+
+These rules exist because ignoring them has caused expensive rework — failed edits that
+got committed anyway, then discovered and re-fixed across multiple commits, burning large
+amounts of tokens for zero net progress. Follow them to keep changes cheap and correct.
+
+### Never batch a commit with the work it commits
+Do NOT put `Edit`, `npm run build`, `npm test`, `git commit`, and `git push` in one
+parallel tool block. Run edits → STOP and read the results → build/test → STOP and read →
+only then stage and commit. The commit is its own step, after green has been seen. A commit
+fired in the same batch as its edits will run even if those edits silently failed.
+
+### Treat a failed `Edit` as a hard stop
+`Edit` returning "String to replace not found" means the change did NOT happen. Do not
+proceed to build/commit assuming it did. Re-read the file, fix the match, confirm the edit
+landed. Never commit on top of an unverified edit.
+
+### Commit messages report, they don't predict
+A commit message may only state facts already seen in a tool output **in the current turn**:
+- Don't write a test count unless `npm test` was just run and the number read.
+- Don't write "verified in browser" unless a preview eval actually returned the evidence.
+- Don't claim a file was changed unless its `Edit` succeeded and it's in `git status`.
+If it hasn't been observed this turn, it doesn't go in the message.
+
+### Verify before claiming, and separate measurement failure from code failure
+A `false`/`null`/empty result is often a bad *measurement* (stale serverId, same-tick DOM
+read before React commits, CSS-transformed text vs raw `textContent`), not a real bug. Check
+the measurement before raising an alarm — and never report success that wasn't actually read back.
+
+### Preview/eval discipline (`mcp__Claude_Preview__*`)
+- Get the `serverId` from a `preview_list` or `preview_start` output **immediately prior**.
+  Never invent or reuse a guessed ID — that was a repeated time-sink.
+- Click and read in **separate** eval calls; React commits between calls, not within one.
+- Launch config lives in `.claude/launch.json` (server name: `dev`, port 5173).
+
+### Test suite shape
+`src/tests/calculations.test.ts` is a single tsx script run via `npm test` (not a framework).
+To add tests: write a `testXxx()` function, register it inside `runAllTests()`, and import any
+new util at the top. A missing import throws a `ReferenceError` that aborts the whole run — so
+after adding tests, read the final "Passed/Failed/Total" line to confirm the suite completed.
