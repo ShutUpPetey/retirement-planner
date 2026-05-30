@@ -73,6 +73,11 @@ function weightedNominalReturn(accounts: Account[]): number {
  * real return, arriving at the Full FIRE number when part-time work ends. After
  * that the portfolio alone funds full spending indefinitely.
  *
+ * Withdrawal timing matches the rest of the app: each year the draw is taken first,
+ * then the remaining balance grows (annuity-due). Solving
+ *   balance_N = start·(1+r)^N − d·(1+r)·((1+r)^N − 1)/r = fullNumber
+ * for the starting balance gives the closed form below.
+ *
  * Indefinite model (bridgeYears <= 0): part-time income continues forever, so the
  * portfolio only needs to cover (spending − partTimeIncome) at the safe withdrawal
  * rate — the classic Barista formula.
@@ -94,7 +99,8 @@ export function baristaFireNumber(
     return Math.max(0, fullNumber + netDraw * bridgeYears);
   }
   const growth = Math.pow(1 + r, bridgeYears);
-  const number = fullNumber / growth + (netDraw * (1 - 1 / growth)) / r;
+  // Draw-first timing: the draw term carries a (1+r) factor (annuity-due).
+  const number = fullNumber / growth + (netDraw * (1 + r) * (1 - 1 / growth)) / r;
   return Math.max(0, number);
 }
 
