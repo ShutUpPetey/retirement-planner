@@ -30,6 +30,7 @@ import {
 } from "../utils/fire";
 import { getRothVsTraditionalAdvice } from "../utils/rothVsTraditional";
 import { calculateRothConversionLadder } from "../utils/rothConversion";
+import { calculateACA } from "../utils/aca";
 import { FIRE_STRATEGY_INFO } from "../utils/fireStrategyInfo";
 import { NumberInput } from "./NumberInput";
 import { Tooltip } from "./Tooltip";
@@ -587,6 +588,100 @@ export function FirePanel({
             your only ordinary income in these years is taxable benefits and income streams.
             Converted principal is accessible penalty-free after 5 years (the 5-year rule isn't
             separately modeled here). Educational guidance, not tax advice.
+          </p>
+        </div>
+      )}
+
+      {/* ACA subsidy / MAGI */}
+      {aca.relevant && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+            ACA Health Subsidies (Pre-Medicare)
+          </h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Before Medicare at 65, your health premiums depend on income. Your modeled
+            income (MAGI) as a share of the Federal Poverty Level sets your premium tax
+            credit. Keeping MAGI lower — including how much you convert to Roth — can be
+            worth thousands in subsidies.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+            <div className="bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                Household size · FPL
+              </div>
+              <div className="text-xl font-semibold text-gray-900 dark:text-white">
+                {aca.householdSize} · {fmt(aca.fpl)}
+              </div>
+            </div>
+            <div className="bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                400% FPL cliff (stay under)
+              </div>
+              <div className="text-xl font-semibold text-gray-900 dark:text-white">
+                {fmt(aca.cliffMagi)}
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                Benchmark premium / yr
+                <Tooltip text="The annual second-lowest silver plan premium for your household, used to estimate subsidy dollars. Varies a lot by age and location — edit to your area's quote." />
+              </label>
+              <NumberInput
+                value={assumptions.acaBenchmarkPremium ?? aca.benchmarkPremium}
+                onChange={(v) => update("acaBenchmarkPremium", v)}
+                min={0}
+                defaultValue={aca.benchmarkPremium}
+                className={inputClassName}
+              />
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-md border border-gray-200 dark:border-gray-700">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-700/40 text-gray-500 dark:text-gray-400">
+                <tr>
+                  <th className="text-left font-medium px-3 py-2">Age</th>
+                  <th className="text-right font-medium px-3 py-2">MAGI</th>
+                  <th className="text-right font-medium px-3 py-2">% FPL</th>
+                  <th className="text-right font-medium px-3 py-2">You pay</th>
+                  <th className="text-right font-medium px-3 py-2">Est. subsidy</th>
+                </tr>
+              </thead>
+              <tbody className="text-gray-700 dark:text-gray-200">
+                {aca.years.map((y: ACAYear) => (
+                  <tr
+                    key={y.age}
+                    className={`border-t border-gray-100 dark:border-gray-700/60 ${
+                      y.cliffRisk ? "bg-amber-50 dark:bg-amber-900/20" : ""
+                    }`}
+                  >
+                    <td className="px-3 py-2">{y.age}</td>
+                    <td className="px-3 py-2 text-right">{fmt(y.magi)}</td>
+                    <td className="px-3 py-2 text-right">
+                      {Math.round(y.fplPercent * 100)}%
+                      {y.cliffRisk && (
+                        <span className="ml-1 text-xs text-amber-600 dark:text-amber-400">
+                          cliff
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right">{fmt(y.expectedContribution)}</td>
+                    <td className="px-3 py-2 text-right font-medium text-emerald-700 dark:text-emerald-300">
+                      {fmt(y.estimatedSubsidy)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">
+            MAGI here includes income streams, Social Security (counted at 100% for ACA,
+            unlike income tax), and any Roth conversions above — but not Roth withdrawals.
+            Subsidy math uses the ARPA-enhanced caps in effect through 2025; if those expire,
+            a hard subsidy cliff returns at 400% FPL ({fmt(aca.cliffMagi)}). Amber rows are
+            over that line. Educational estimate, not a quote.
           </p>
         </div>
       )}
