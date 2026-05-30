@@ -182,6 +182,26 @@ export function FirePanel({
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Part-Time Years (bridge)
+              <Tooltip text="How many years you'll work part-time before fully retiring. The bridge model grows your portfolio to the Full FIRE number over this period, then it funds spending alone. Set 0 for indefinite part-time income." />
+            </label>
+            <NumberInput
+              value={assumptions.baristaBridgeYears ?? 0}
+              onChange={(v) => update("baristaBridgeYears", v)}
+              min={0}
+              max={40}
+              decimals={0}
+              defaultValue={10}
+              className={inputClassName}
+            />
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              {(assumptions.baristaBridgeYears ?? 0) > 0
+                ? `Part-time to ~age ${profile.retirementAge + (assumptions.baristaBridgeYears ?? 0)}, then fully retired`
+                : "0 = part-time income continues indefinitely"}
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Lean FIRE (% of spending)
               <Tooltip text="A leaner lifestyle as a share of your spending goal. 70% is typical." />
             </label>
@@ -242,6 +262,7 @@ export function FirePanel({
               leanMultiplier={assumptions.leanMultiplier ?? 0.7}
               fatMultiplier={assumptions.fatMultiplier ?? 1.6}
               baristaIncome={assumptions.baristaAnnualIncome ?? 0}
+              baristaBridgeYears={assumptions.baristaBridgeYears ?? 0}
               realReturnRate={fire.realReturnRate}
               currentInvested={fire.currentInvested}
             />
@@ -656,6 +677,7 @@ function FireCard({
   leanMultiplier,
   fatMultiplier,
   baristaIncome,
+  baristaBridgeYears,
   realReturnRate,
   currentInvested,
 }: {
@@ -669,6 +691,7 @@ function FireCard({
   leanMultiplier: number;
   fatMultiplier: number;
   baristaIncome: number;
+  baristaBridgeYears: number;
   realReturnRate: number;
   currentInvested: number;
 }) {
@@ -686,7 +709,9 @@ function FireCard({
       case "fat":
         return `${fmt(annualSpending)} × ${pct(fatMultiplier)} ÷ ${pct(swr)} = ${fmt(target.targetNumber)}`;
       case "barista":
-        return `(${fmt(annualSpending)} − ${fmt(baristaIncome)} part-time) ÷ ${pct(swr)} = ${fmt(target.targetNumber)}`;
+        return baristaBridgeYears > 0
+          ? `Start with ${fmt(target.targetNumber)}, draw ${fmt(annualSpending - baristaIncome)}/yr (spending − part-time) for ${baristaBridgeYears} ${baristaBridgeYears === 1 ? "year" : "years"} while it grows at ${pct(realReturnRate)} real, reaching your Full FIRE number (${fmt(annualSpending / swr)}) by ~age ${retirementAge + baristaBridgeYears}.`
+          : `(${fmt(annualSpending)} − ${fmt(baristaIncome)} part-time) ÷ ${pct(swr)} = ${fmt(target.targetNumber)} (indefinite part-time income)`;
       case "coast":
         return `${fmt(currentInvested)} today, growing at ${pct(realReturnRate)} real, reaches your Full FIRE number by age ${retirementAge}. Coast number: ${fmt(target.targetNumber)}`;
       default:

@@ -65,6 +65,39 @@ function weightedNominalReturn(accounts: Account[]): number {
   );
 }
 
+/**
+ * Portfolio needed (today's dollars) to start a Barista FIRE phase.
+ *
+ * Bridge model (bridgeYears > 0): you work part-time for `bridgeYears`, drawing
+ * (spending − partTimeIncome) from the portfolio each year while it grows at the
+ * real return, arriving at the Full FIRE number when part-time work ends. After
+ * that the portfolio alone funds full spending indefinitely.
+ *
+ * Indefinite model (bridgeYears <= 0): part-time income continues forever, so the
+ * portfolio only needs to cover (spending − partTimeIncome) at the safe withdrawal
+ * rate — the classic Barista formula.
+ */
+export function baristaFireNumber(
+  annualSpending: number,
+  partTimeIncome: number,
+  swr: number,
+  realReturn: number,
+  bridgeYears: number,
+): number {
+  if (bridgeYears <= 0) {
+    return Math.max(0, (annualSpending - partTimeIncome) / swr);
+  }
+  const fullNumber = annualSpending / swr;
+  const netDraw = annualSpending - partTimeIncome; // can be negative if income > spending
+  const r = realReturn;
+  if (Math.abs(r) < 1e-9) {
+    return Math.max(0, fullNumber + netDraw * bridgeYears);
+  }
+  const growth = Math.pow(1 + r, bridgeYears);
+  const number = fullNumber / growth + (netDraw * (1 - 1 / growth)) / r;
+  return Math.max(0, number);
+}
+
 /** First age the portfolio reaches `target`, projecting in REAL terms. null if not by 100. */
 function ageWhenReached(
   startBalance: number,
@@ -120,7 +153,14 @@ export function calculateFire(
       ? fullNumber / Math.pow(1 + realReturnRate, yearsToRetirement)
       : fullNumber;
   const baristaIncome = assumptions.baristaAnnualIncome ?? 0;
-  const baristaNumber = Math.max(0, (annualSpending - baristaIncome) / swr);
+  const baristaBridgeYears = assumptions.baristaBridgeYears ?? 0;
+  const baristaNumber = baristaFireNumber(
+    annualSpending,
+    baristaIncome,
+    swr,
+    realReturnRate,
+    baristaBridgeYears,
+  );
 
   const coastAchieveAge = ageWhenReached(
     currentInvested,
@@ -187,8 +227,10 @@ export function calculateFire(
       "barista",
       "Barista FIRE",
       baristaIncome > 0
-        ? `Withdrawals plus ~$${Math.round(baristaIncome).toLocaleString()}/yr of part-time income cover your spending.`
-        : "Withdrawals plus part-time income cover your spending. Set a part-time income to personalize this.",
+        ? baristaBridgeYears > 0
+          ? `Work part-time ~$${Math.round(baristaIncome).toLocaleString()}/yr for ${baristaBridgeYears} ${baristaBridgeYears === 1 ? "year" : "years"} (to ~age ${profile.retirementAge + baristaBridgeYears}), then your portfolio covers full spending.`
+          : `Withdrawals plus ~$${Math.round(baristaIncome).toLocaleString()}/yr of indefinite part-time income cover your spending.`
+        : "Part-time income covers part of your spending. Set a part-time income to personalize this.",
       baristaNumber,
       realAnnualContribution,
     ),
@@ -217,6 +259,8 @@ export function calculateFire(
     realReturnRate,
     yearsToRetirement,
     coastAchieveAge,
+    baristaBridgeYears,
+    baristaIncome,
     targets,
     projection,
   };

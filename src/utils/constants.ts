@@ -137,6 +137,7 @@ export const DEFAULT_ASSUMPTIONS = {
   retirementReturnRate: 0.05,
   annualSpendingGoal: 60000,
   baristaAnnualIncome: 20000,
+  baristaBridgeYears: 10,
   adjustTaxBracketsForInflation: true,
   spendingMode: 'swr' as const,
   returnVolatility: 0.1,

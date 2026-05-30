@@ -102,6 +102,7 @@ export interface Assumptions {
   retirementReturnRate: number; // as decimal
   annualSpendingGoal?: number; // desired annual retirement spending, today's dollars (drives FIRE numbers)
   baristaAnnualIncome?: number; // expected part-time income for Barista FIRE, today's dollars
+  baristaBridgeYears?: number; // years of part-time work (bridge). 0/undefined = indefinite part-time income
   leanMultiplier?: number; // fraction of spending for Lean FIRE, e.g. 0.7
   fatMultiplier?: number;  // fraction of spending for Fat FIRE, e.g. 1.6
   adjustTaxBracketsForInflation?: boolean; // default true — bracket thresholds grow with inflation
@@ -164,6 +165,8 @@ export interface FireResult {
   realReturnRate: number;      // inflation-adjusted return used for coast math
   yearsToRetirement: number;
   coastAchieveAge: number | null; // age you'd hit the full number with NO further contributions
+  baristaBridgeYears: number;  // years of part-time work modeled (0 = indefinite)
+  baristaIncome: number;       // part-time income used (today's dollars)
   targets: FireTarget[];
   projection: FireProjectionPoint[];
 }

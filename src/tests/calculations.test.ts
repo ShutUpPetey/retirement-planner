@@ -1917,6 +1917,46 @@ function testMonteCarloSim(): void {
   assert(underfunded.successRate < 0.1, 'Severely underfunded plan mostly fails');
 }
 
+function testBaristaBridge(): void {
+  section('BARISTA FIRE — BRIDGE MODEL');
+
+  const spending = 60000;
+  const income = 20000;
+  const swr = 0.04;
+  const r = 0.05;
+
+  // Indefinite (bridge = 0) reproduces the classic formula
+  const indefinite = baristaFireNumber(spending, income, swr, r, 0);
+  assertApprox(indefinite, (spending - income) / swr, 1,
+    'Bridge=0 reproduces (spending - income) / SWR = $1,000,000');
+
+  // Bridge case: starting portfolio grown forward must land on the Full FIRE number.
+  // Simulate: each year draw (spending - income), then grow at r, for N years.
+  const N = 10;
+  const fullNumber = spending / swr; // 1,500,000
+  const bridgeStart = baristaFireNumber(spending, income, swr, r, N);
+  let bal = bridgeStart;
+  for (let i = 0; i < N; i++) {
+    bal = (bal - (spending - income)) * (1 + r);
+  }
+  assertApprox(bal, fullNumber, 1,
+    `Bridge start grows to the Full FIRE number after ${N} years (lands on $1,500,000)`);
+
+  // A longer bridge should require a SMALLER starting portfolio (more years of part-time work)
+  const short = baristaFireNumber(spending, income, swr, r, 5);
+  const long = baristaFireNumber(spending, income, swr, r, 20);
+  assert(long < short, 'Longer bridge needs a smaller starting portfolio');
+
+  // Zero real return: linear — start + N*(spending-income) drawn must still reach fullNumber
+  const zeroR = baristaFireNumber(spending, income, swr, 0, N);
+  assertApprox(zeroR, fullNumber + (spending - income) * N, 1,
+    'Zero-return bridge is linear: fullNumber + N*(spending - income)');
+
+  // Part-time income >= spending: net draw is negative, portfolio grows; never below 0
+  const richIncome = baristaFireNumber(spending, 70000, swr, r, N);
+  assert(richIncome >= 0, 'Part-time income above spending yields a non-negative number');
+}
+
 function runAllTests(): void {
   console.log('\n' + '🧪 RETIREMENT CALCULATOR MATH TESTS '.padEnd(60, '='));
   console.log('Running comprehensive tests on all calculations...\n');
@@ -1941,6 +1981,7 @@ function runAllTests(): void {
   testIncomeStreamCalculator();
   testIncomeStreamWithdrawals();
   testMonteCarloSim();
+  testBaristaBridge();
 
   console.log('\n' + '='.repeat(60));
   console.log('TEST SUMMARY');

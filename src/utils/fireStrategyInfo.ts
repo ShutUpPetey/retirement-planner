@@ -83,9 +83,9 @@ export const FIRE_STRATEGY_INFO: Record<FireTargetId, FireStrategyInfo> = {
   },
   barista: {
     summary:
-      'Barista FIRE blends a smaller portfolio with ongoing part-time income (the classic example being a part-time job for the health benefits, hence "barista"). Your investments cover most of your spending; modest earned income covers the rest — so the portfolio you need is meaningfully smaller than Full FIRE.',
+      'Barista FIRE blends a smaller portfolio with part-time income (the classic example being a part-time job for the health benefits, hence "barista"). It is most often used as a bridge: you leave full-time work earlier than a full retirement, work part-time for a set number of years, and let your portfolio keep growing until it can fund your full lifestyle on its own. You can also model it as indefinite part-time income that never stops.',
     formula:
-      '(Annual spending − part-time income) ÷ safe withdrawal rate. Every dollar of reliable part-time income is one less dollar your portfolio has to produce.',
+      'Bridge model: the portfolio you need today is the amount that, after drawing (spending − part-time income) each year for your chosen number of part-time years while growing at your real return, lands exactly on your Full FIRE number. Set the bridge to 0 years to instead model permanent part-time income, which simplifies to (annual spending − part-time income) ÷ safe withdrawal rate.',
     bestFor: [
       'People who enjoy some work but want to drop the full-time grind',
       'Early retirees bridging the gap to Social Security or pension age',
@@ -94,7 +94,8 @@ export const FIRE_STRATEGY_INFO: Record<FireTargetId, FireStrategyInfo> = {
     watchOut: [
       'Relies on continued ability and willingness to earn — health or job markets can change',
       'Part-time income is often less stable and rarely inflation-protected',
-      'If the part-time income stops, you may fall back on a portfolio sized below Full FIRE',
+      'A shorter bridge needs a larger starting portfolio; a longer bridge needs less but commits you to more years of work',
+      'If you stop the part-time work earlier than planned, your portfolio may not yet have grown to the Full FIRE number',
     ],
   },
 };
