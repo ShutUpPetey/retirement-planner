@@ -106,6 +106,28 @@ export function ProfileForm({ profile, onChange }: ProfileFormProps) {
           </div>
         )}
 
+        {country === "US" && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Household Size
+              <Tooltip text="People in your tax household. Sets the Federal Poverty Level used for ACA health-subsidy estimates before Medicare." />
+            </label>
+            <NumberInput
+              value={
+                profile.householdSize ??
+                (profile.filingStatus === "married_filing_jointly" ? 2 : 1)
+              }
+              onChange={(val) => handleChange("householdSize", val)}
+              min={1}
+              max={12}
+              defaultValue={
+                profile.filingStatus === "married_filing_jointly" ? 2 : 1
+              }
+              className={inputClassName}
+            />
+          </div>
+        )}
+
         {country === "CA" && (
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">

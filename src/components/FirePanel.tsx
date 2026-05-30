@@ -17,6 +17,8 @@ import {
   RetirementResult,
   FireTarget,
   IncomeStream,
+  ConversionYear,
+  ACAYear,
 } from "../types";
 import type { CountryConfig } from "../countries";
 import {
@@ -27,6 +29,7 @@ import {
   assessSwr,
 } from "../utils/fire";
 import { getRothVsTraditionalAdvice } from "../utils/rothVsTraditional";
+import { calculateRothConversionLadder } from "../utils/rothConversion";
 import { FIRE_STRATEGY_INFO } from "../utils/fireStrategyInfo";
 import { NumberInput } from "./NumberInput";
 import { Tooltip } from "./Tooltip";
@@ -86,6 +89,13 @@ export function FirePanel({
     incomeStreams,
   );
   const swr = assessSwr(profile, assumptions);
+  const rothLadder = calculateRothConversionLadder(
+    accounts,
+    profile,
+    assumptions,
+    incomeStreams,
+    accumulation,
+  );
 
   const fmt = (n: number) =>
     new Intl.NumberFormat(undefined, {
@@ -496,6 +506,88 @@ export function FirePanel({
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Roth conversion ladder */}
+      {rothLadder.relevant && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+            Roth Conversion Ladder
+          </h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            In your low-income years (age {rothLadder.startAge}–{rothLadder.endAge}, before
+            Social Security and RMDs ramp up), converting traditional balances to Roth fills
+            the cheap {rothLadder.fillBracketLabel} bracket. You pay tax now at a low rate to
+            shrink future RMDs and build a tax-free balance.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+            <div className="bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
+              <div className="text-xs text-gray-500 dark:text-gray-400">Total converted</div>
+              <div className="text-xl font-semibold text-gray-900 dark:text-white">
+                {fmt(rothLadder.totalConverted)}
+              </div>
+            </div>
+            <div className="bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                Tax cost ({pct(rothLadder.blendedRate)} blended)
+              </div>
+              <div className="text-xl font-semibold text-gray-900 dark:text-white">
+                {fmt(rothLadder.totalTaxCost)}
+              </div>
+            </div>
+            <div className="bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                Est. RMD reduction at 73
+              </div>
+              <div className="text-xl font-semibold text-gray-900 dark:text-white">
+                {fmt(rothLadder.rmdReductionEstimate)}/yr
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-md border border-gray-200 dark:border-gray-700">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-700/40 text-gray-500 dark:text-gray-400">
+                <tr>
+                  <th className="text-left font-medium px-3 py-2">Age</th>
+                  <th className="text-right font-medium px-3 py-2">Other income</th>
+                  <th className="text-right font-medium px-3 py-2">Convert</th>
+                  <th className="text-right font-medium px-3 py-2">Tax cost</th>
+                  <th className="text-right font-medium px-3 py-2">Cumulative</th>
+                </tr>
+              </thead>
+              <tbody className="text-gray-700 dark:text-gray-200">
+                {rothLadder.years.map((y: ConversionYear) => (
+                  <tr
+                    key={y.age}
+                    className="border-t border-gray-100 dark:border-gray-700/60"
+                  >
+                    <td className="px-3 py-2">{y.age}</td>
+                    <td className="px-3 py-2 text-right">{fmt(y.baseOrdinaryIncome)}</td>
+                    <td className="px-3 py-2 text-right font-medium text-purple-700 dark:text-purple-300">
+                      {fmt(y.conversionAmount)}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {fmt(y.taxCost)}{" "}
+                      <span className="text-xs text-gray-400">
+                        ({pct(y.marginalRate)})
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right">{fmt(y.cumulativeConverted)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">
+            Estimates fill to the top of the {rothLadder.fillBracketLabel} bracket assuming
+            your only ordinary income in these years is taxable benefits and income streams.
+            Converted principal is accessible penalty-free after 5 years (the 5-year rule isn't
+            separately modeled here). Educational guidance, not tax advice.
+          </p>
         </div>
       )}
 

@@ -9,6 +9,9 @@ import { calculateAccumulation } from '../utils/projections';
 import { calculateWithdrawals } from '../utils/withdrawals';
 import { runMonteCarlo } from '../utils/monteCarlo';
 import { baristaFireNumber } from '../utils/fire';
+import { calculateRothConversionLadder } from '../utils/rothConversion';
+import { calculateACA, acaApplicablePercentage } from '../utils/aca';
+import { federalPovertyLevel } from '../data/fpl';
 import { calculateIncomeStreamBenefits } from '../utils/incomeStreams';
 import {
   calculateFederalIncomeTax,
@@ -1958,6 +1961,104 @@ function testBaristaBridge(): void {
   assert(richIncome >= 0, 'Part-time income above spending yields a non-negative number');
 }
 
+function testRothConversionLadder(): void {
+  section('ROTH CONVERSION LADDER');
+
+  const tradAccount: Account = {
+    id: 'trad', name: 'Traditional 401k', type: 'traditional_401k',
+    balance: 800000, annualContribution: 0, contributionGrowthRate: 0, returnRate: 0.07,
+  };
+  const profile: Profile = {
+    country: 'US', currentAge: 55, retirementAge: 55, lifeExpectancy: 90,
+    region: 'TX', filingStatus: 'married_filing_jointly', stateTaxRate: 0,
+  };
+  const assumptions: Assumptions = {
+    inflationRate: 0.03, safeWithdrawalRate: 0.04, retirementReturnRate: 0.05,
+  };
+
+  // SS starting at 70 => conversion window is 55..69 (15 years), capped by traditional balance.
+  const ss: IncomeStream[] = [
+    { id: 'ss', name: 'Social Security', monthlyAmount: 3000, startAge: 70, taxTreatment: 'social_security' },
+  ];
+
+  const ladder = calculateRothConversionLadder([tradAccount], profile, assumptions, ss);
+  assert(ladder.relevant, 'Ladder is relevant for an early US retiree with traditional balance');
+  assert(ladder.startAge === 55, 'Ladder starts at retirement age 55');
+  assert(ladder.endAge === 69, 'Ladder ends at 69 (year before SS starts at 70)');
+  assert(ladder.years.length > 0, 'Ladder produces conversion years');
+
+  // With no base income, each year fills to standard deduction + 12% bracket top.
+  // MFJ: 29,200 + 94,300 = 123,500 per year (until the balance runs out).
+  assertApprox(ladder.years[0].conversionAmount, 123500, 1,
+    'Year 1 fills to standard deduction + 12% bracket top (MFJ $123,500)');
+
+  // Blended tax rate on conversions should be low (filling 10% + 12% brackets only).
+  assert(ladder.blendedRate > 0 && ladder.blendedRate < 0.12,
+    `Blended conversion rate is in the cheap range (got ${(ladder.blendedRate * 100).toFixed(1)}%)`);
+
+  // Total converted cannot exceed the traditional balance.
+  assert(ladder.totalConverted <= 800000 + 1, 'Total converted does not exceed traditional balance');
+
+  // Non-US returns not-relevant.
+  const caProfile: Profile = { ...profile, country: 'CA' };
+  const caLadder = calculateRothConversionLadder([tradAccount], caProfile, assumptions, ss);
+  assert(!caLadder.relevant, 'Ladder is not relevant for non-US profiles');
+
+  // No traditional balance => not relevant.
+  const rothOnly: Account = { ...tradAccount, type: 'roth_ira' };
+  const noTrad = calculateRothConversionLadder([rothOnly], profile, assumptions, ss);
+  assert(!noTrad.relevant, 'Ladder is not relevant with no traditional balance');
+}
+
+function testACA(): void {
+  section('ACA SUBSIDY / MAGI MODELING');
+
+  assertApprox(federalPovertyLevel(1), 15060, 0.01, 'FPL household of 1 = $15,060');
+  assertApprox(federalPovertyLevel(2), 20440, 0.01, 'FPL household of 2 = $20,440');
+
+  assertApprox(acaApplicablePercentage(1.4), 0, 0.0001, '<=150% FPL pays 0%');
+  assertApprox(acaApplicablePercentage(4.0), 0.085, 0.0001, '400% FPL pays 8.5%');
+  assertApprox(acaApplicablePercentage(6.0), 0.085, 0.0001, 'Above 400% FPL capped at 8.5% (ARPA)');
+  assertApprox(acaApplicablePercentage(3.0), 0.06, 0.0001, '300% FPL pays 6%');
+  let prev = -1; let mono = true;
+  for (let p = 1.0; p <= 5.0; p += 0.25) { const v = acaApplicablePercentage(p); if (v < prev - 1e-9) mono = false; prev = v; }
+  assert(mono, 'Applicable percentage is monotonically non-decreasing');
+
+  const profile: Profile = {
+    country: 'US', currentAge: 54, retirementAge: 55, lifeExpectancy: 90,
+    region: 'TX', filingStatus: 'married_filing_jointly', stateTaxRate: 0,
+    householdSize: 2,
+  };
+  const assumptions: Assumptions = {
+    inflationRate: 0.03, safeWithdrawalRate: 0.04, retirementReturnRate: 0.05,
+    acaBenchmarkPremium: 18000,
+  };
+
+  const lowIncome = calculateACA(profile, assumptions, []);
+  assert(lowIncome.relevant, 'ACA relevant for US early retiree (retire 55 < 65)');
+  assert(lowIncome.years.length === 10, 'Covers pre-Medicare years 55..64 (10 years)');
+  assertApprox(lowIncome.years[0].estimatedSubsidy, 18000, 1, 'Zero MAGI yields full benchmark subsidy');
+  assert(!lowIncome.years[0].cliffRisk, 'Zero MAGI is well under the 400% FPL cliff');
+
+  const ladder = calculateRothConversionLadder(
+    [{ id: 't', name: 'T', type: 'traditional_401k', balance: 800000, annualContribution: 0, contributionGrowthRate: 0, returnRate: 0.05 }],
+    profile, assumptions,
+    [{ id: 'ss', name: 'SS', monthlyAmount: 3000, startAge: 70, taxTreatment: 'social_security' }],
+  );
+  const withConv = calculateACA(profile, assumptions,
+    [{ id: 'ss', name: 'SS', monthlyAmount: 3000, startAge: 70, taxTreatment: 'social_security' }],
+    ladder);
+  assert(withConv.years[0].magi > lowIncome.years[0].magi, 'Roth conversion raises modeled MAGI');
+  assert(withConv.years[0].estimatedSubsidy < lowIncome.years[0].estimatedSubsidy,
+    'Roth conversion erodes the ACA subsidy (the cliff interaction)');
+  assert(withConv.years[0].cliffRisk, 'Large conversion pushes MAGI over the 400% FPL cliff');
+
+  const lateRetire = calculateACA({ ...profile, retirementAge: 66 }, assumptions, []);
+  assert(!lateRetire.relevant, 'Not relevant when retiring at/after Medicare age 65');
+  const ca = calculateACA({ ...profile, country: 'CA' }, assumptions, []);
+  assert(!ca.relevant, 'Not relevant for non-US profiles');
+}
+
 function runAllTests(): void {
   console.log('\n' + '🧪 RETIREMENT CALCULATOR MATH TESTS '.padEnd(60, '='));
   console.log('Running comprehensive tests on all calculations...\n');
@@ -1983,6 +2084,8 @@ function runAllTests(): void {
   testIncomeStreamWithdrawals();
   testMonteCarloSim();
   testBaristaBridge();
+  testRothConversionLadder();
+  testACA();
 
   console.log('\n' + '='.repeat(60));
   console.log('TEST SUMMARY');

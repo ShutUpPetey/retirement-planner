@@ -94,6 +94,7 @@ export interface Profile {
   socialSecurityStartAge?: number; // Canada CPP start age; US uses income streams
   secondaryBenefitStartAge?: number; // OAS for CA
   secondaryBenefitAmount?: number; // OAS amount for CA
+  householdSize?: number; // US ACA: people in the tax household (default 1, or 2 if MFJ)
 }
 
 export interface Assumptions {
@@ -108,6 +109,7 @@ export interface Assumptions {
   adjustTaxBracketsForInflation?: boolean; // default true — bracket thresholds grow with inflation
   spendingMode?: 'swr' | 'goal'; // default 'swr' — how retirement spending target is set
   returnVolatility?: number; // annual stddev of returns for Monte Carlo (decimal); default 0.10
+  acaBenchmarkPremium?: number; // assumed annual benchmark (silver) health premium for ACA, today's $
 }
 
 // ---- Monte Carlo simulation ----
@@ -205,6 +207,54 @@ export interface SwrAssessment {
   recommendedMax: number;       // suggested ceiling given retirement length (decimal)
   flagged: boolean;             // swr exceeds recommendedMax
   message: string;
+}
+
+// ---- Roth conversion ladder (US only) ----
+
+export interface ConversionYear {
+  age: number;
+  year: number;
+  baseOrdinaryIncome: number;   // estimated taxable ordinary income before conversion (today's $)
+  conversionAmount: number;     // suggested traditional -> Roth conversion this year
+  taxCost: number;              // incremental federal tax on the conversion
+  marginalRate: number;         // effective rate on the converted dollars
+  cumulativeConverted: number;  // running total converted through this year
+}
+
+export interface RothConversionLadder {
+  relevant: boolean;            // false if not US, no traditional balance, or no gap window
+  startAge: number;             // first conversion year (retirement age)
+  endAge: number;               // last conversion year (inclusive)
+  fillBracketRate: number;      // bracket the ladder fills to (e.g. 0.12)
+  fillBracketLabel: string;     // e.g. "12%"
+  years: ConversionYear[];
+  totalConverted: number;
+  totalTaxCost: number;
+  blendedRate: number;          // totalTaxCost / totalConverted
+  rmdReductionEstimate: number; // approx. reduction in first-year RMD from the conversions
+}
+
+// ---- ACA premium tax credit / MAGI modeling (US, pre-Medicare) ----
+
+export interface ACAYear {
+  age: number;
+  year: number;
+  magi: number;                  // modeled MAGI that year (today's dollars)
+  fplPercent: number;            // MAGI as a multiple of FPL (e.g. 2.5 = 250% FPL)
+  expectedContributionPct: number; // ACA "applicable percentage" of MAGI
+  expectedContribution: number;  // most you'd pay toward the benchmark plan
+  estimatedSubsidy: number;      // benchmark premium - expected contribution (>= 0)
+  cliffRisk: boolean;            // MAGI over 400% FPL (subsidy lost if ARPA caps expire)
+}
+
+export interface ACAAnalysis {
+  relevant: boolean;             // US, retire before 65, has pre-Medicare years
+  householdSize: number;
+  fpl: number;                   // annual FPL for the household size
+  benchmarkPremium: number;      // assumed annual benchmark (second-lowest silver) premium
+  cliffMagi: number;             // MAGI at 400% FPL (the current-law cliff threshold)
+  medicaidMagi: number;          // MAGI at 138% FPL (Medicaid eligibility in expansion states)
+  years: ACAYear[];
 }
 
 // ---- Roth vs Traditional advice ----
