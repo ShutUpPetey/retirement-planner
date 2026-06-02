@@ -9,6 +9,12 @@ export interface AccountWithdrawal {
   accountName: string;
   accountType: string;
   amount: number;
+  /**
+   * Optional override for the portion of `amount` subject to early-withdrawal penalty.
+   * Used for Roth accounts with tracked basis: only the earnings portion is penalizable.
+   * When undefined, the full `amount` is treated as penalizable (legacy behavior).
+   */
+  penalizableAmount?: number;
 }
 
 /**
@@ -29,14 +35,32 @@ export function calculatePenalties(
   for (const withdrawal of withdrawals) {
     const penaltyInfo = countryConfig.getPenaltyInfo(withdrawal.accountType);
 
-    // Only calculate penalty if it applies to this account type and age
+    // Case 1: account types the country flags as penalty-bearing (e.g. US traditional).
     if (penaltyInfo.appliesToAccountType && currentAge < penaltyInfo.penaltyAge) {
       const penaltyAmount = countryConfig.calculateEarlyWithdrawalPenalty(
         withdrawal.amount,
         withdrawal.accountType,
         currentAge
       );
+      if (penaltyAmount > 0) {
+        penalties.push({
+          amount: penaltyAmount,
+          accountId: withdrawal.accountId,
+          accountName: withdrawal.accountName,
+        });
+      }
+      continue;
+    }
 
+    // Case 2: Roth (or similar) with a tracked earnings portion. The type itself isn't
+    // flagged as penalty-bearing, but the earnings withdrawn before the penalty age are.
+    // Apply the country's standard penalty rate to just that portion.
+    if (
+      withdrawal.penalizableAmount !== undefined &&
+      withdrawal.penalizableAmount > 0 &&
+      currentAge < penaltyInfo.penaltyAge
+    ) {
+      const penaltyAmount = withdrawal.penalizableAmount * penaltyInfo.penaltyRate;
       if (penaltyAmount > 0) {
         penalties.push({
           amount: penaltyAmount,

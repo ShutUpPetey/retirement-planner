@@ -78,6 +78,10 @@ export interface Account {
   annualSalary?: number;             // gross salary; used for salary_percent match cap
   // IRS / CRA contribution limits
   useIrsMaxContribution?: boolean;   // replace annualContribution with inflation-adjusted IRS max each year
+  // Roth basis: running sum of contributions (cost basis). When set on a Roth account,
+  // contributions are withdrawn first and penalty-free at any age; only the earnings
+  // portion withdrawn before 59.5 is penalized. Undefined => legacy behavior (all penalty-free).
+  rothContributions?: number;
   withdrawalRules?: AccountWithdrawalRules;  // Optional for backwards compatibility
 }
 

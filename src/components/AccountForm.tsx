@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Account, AccountType, Profile, getAccountTypeLabel, is401k } from '../types';
+import { Account, AccountType, Profile, getAccountTypeLabel, is401k, getTaxTreatment } from '../types';
 import { NumberInput } from './NumberInput';
 import { Tooltip } from './Tooltip';
 import { v4 as uuidv4 } from 'uuid';
@@ -118,6 +118,9 @@ export function AccountForm({ account, profile, onSave, onCancel }: AccountFormP
 
   // Show employer match fields for 401k or employer RRSP
   const showEmployerMatchFields = is401k(formData.type) || formData.type === 'employer_rrsp';
+
+  // Roth basis tracking: optional cost-basis input for Roth accounts (US).
+  const showRothBasis = getTaxTreatment(formData.type) === 'roth';
 
   // IRS / CRA contribution limit for the current account type (numeric only)
   const irsLimit = useMemo(() => {
@@ -376,6 +379,27 @@ export function AccountForm({ account, profile, onSave, onCancel }: AccountFormP
               </p>
             )
           )}
+        </div>
+      )}
+
+      {showRothBasis && (
+        <div className="border-t border-gray-200 dark:border-gray-600 pt-4 mt-4">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Roth Contributions / Cost Basis ($)
+            <Tooltip text="Total you've contributed to this Roth (not earnings). Contributions can be withdrawn penalty-free at any age; only earnings are penalized before 59.5. Leave blank to treat all Roth withdrawals as penalty-free." />
+          </label>
+          <NumberInput
+            value={formData.rothContributions ?? 0}
+            onChange={(val) =>
+              setFormData((prev) => ({ ...prev, rothContributions: val }))
+            }
+            min={0}
+            defaultValue={0}
+            className={inputClassName}
+          />
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Optional. Used to penalize only the earnings portion of early Roth withdrawals.
+          </p>
         </div>
       )}
 

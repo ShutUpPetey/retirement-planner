@@ -25,6 +25,9 @@ interface AccountState {
   type: Account['type'];
   balance: number;
   costBasis: number; // For taxable accounts, tracks original investment
+  // For Roth accounts with tracked basis: remaining contributions (withdrawn first,
+  // penalty-free). undefined => basis not tracked (legacy: all Roth penalty-free).
+  rothBasis?: number;
 }
 
 /**
@@ -98,6 +101,11 @@ export function calculateWithdrawals(
     costBasis: getTaxTreatment(account.type) === 'taxable'
       ? (accumulationResult.finalBalances[account.id] || 0) * 0.5
       : 0,
+    // Roth basis carries over from the account input when provided. Capped at the
+    // projected balance (can't have more basis than balance).
+    rothBasis: getTaxTreatment(account.type) === 'roth' && account.rothContributions !== undefined
+      ? Math.min(account.rothContributions, accumulationResult.finalBalances[account.id] || 0)
+      : undefined,
   }));
 
   const totalPortfolio = accumulationResult.totalAtRetirement;
@@ -404,17 +412,27 @@ function performTaxOptimizedWithdrawal(
     result.byAccount[acc.id] = 0;
   });
 
-  // Helper to record withdrawals for penalty calculation
+  // Helper to record withdrawals for penalty calculation.
+  // For Roth accounts with tracked basis, contributions come out first (penalty-free);
+  // only the earnings portion is penalizable. Basis is drawn down as it's used.
   const recordWithdrawal = (acc: AccountState, amount: number) => {
     const account = accounts.find(a => a.id === acc.id);
-    if (account && amount > 0) {
-      result.accountWithdrawals.push({
-        accountId: acc.id,
-        accountName: account.name,
-        accountType: acc.type,
-        amount,
-      });
+    if (!account || amount <= 0) return;
+
+    let penalizableAmount: number | undefined;
+    if (getTaxTreatment(acc.type) === 'roth' && acc.rothBasis !== undefined) {
+      const fromBasis = Math.min(amount, acc.rothBasis);
+      penalizableAmount = amount - fromBasis; // earnings portion
+      acc.rothBasis -= fromBasis;
     }
+
+    result.accountWithdrawals.push({
+      accountId: acc.id,
+      accountName: account.name,
+      accountType: acc.type,
+      amount,
+      penalizableAmount,
+    });
   };
 
   // How much do we need after all retirement income (government benefits + income streams)?

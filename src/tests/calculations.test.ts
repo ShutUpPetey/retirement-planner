@@ -13,6 +13,7 @@ import { calculateRothConversionLadder } from '../utils/rothConversion';
 import { calculateACA, acaApplicablePercentage } from '../utils/aca';
 import { federalPovertyLevel } from '../data/fpl';
 import { calculateSSClaiming, ssBenefitFactor } from '../utils/socialSecurity';
+import { calculatePenalties } from '../utils/penaltyCalculator';
 import { calculateIncomeStreamBenefits } from '../utils/incomeStreams';
 import {
   calculateFederalIncomeTax,
@@ -2120,6 +2121,87 @@ function testSSClaiming(): void {
   assert(!calculateSSClaiming(profile, []).relevant, 'Not relevant with no SS stream');
 }
 
+function testRothBasisTracking(): void {
+  section('ROTH BASIS TRACKING');
+
+  // Roth withdrawal of $20k with $50k basis remaining: all contributions, no penalty.
+  const allContrib = calculatePenalties(
+    [{ accountId: 'r', accountName: 'Roth', accountType: 'roth_ira', amount: 20000, penalizableAmount: 0 }],
+    50, usConfig,
+  );
+  assertApprox(
+    allContrib.reduce((s, p) => s + p.amount, 0), 0, 0.01,
+    'Roth withdrawal fully from contributions at 50 = $0 penalty',
+  );
+
+  // Roth withdrawal where $8k is earnings (beyond basis): 10% on the $8k only.
+  const someEarnings = calculatePenalties(
+    [{ accountId: 'r', accountName: 'Roth', accountType: 'roth_ira', amount: 20000, penalizableAmount: 8000 }],
+    50, usConfig,
+  );
+  assertApprox(
+    someEarnings.reduce((s, p) => s + p.amount, 0), 800, 0.01,
+    'Roth earnings portion ($8k) penalized 10% = $800 at age 50',
+  );
+
+  // Same earnings, but after 59.5: no penalty.
+  const afterAge = calculatePenalties(
+    [{ accountId: 'r', accountName: 'Roth', accountType: 'roth_ira', amount: 20000, penalizableAmount: 8000 }],
+    60, usConfig,
+  );
+  assertApprox(
+    afterAge.reduce((s, p) => s + p.amount, 0), 0, 0.01,
+    'Roth earnings after 59.5 = $0 penalty',
+  );
+
+  // Legacy behavior: no penalizableAmount provided => Roth stays fully penalty-free.
+  const legacy = calculatePenalties(
+    [{ accountId: 'r', accountName: 'Roth', accountType: 'roth_ira', amount: 20000 }],
+    50, usConfig,
+  );
+  assertApprox(
+    legacy.reduce((s, p) => s + p.amount, 0), 0, 0.01,
+    'No basis tracked => Roth fully penalty-free (legacy behavior preserved)',
+  );
+
+  // Traditional still penalized on the full amount regardless of penalizableAmount.
+  const trad = calculatePenalties(
+    [{ accountId: 't', accountName: 'Trad', accountType: 'traditional_ira', amount: 20000 }],
+    50, usConfig,
+  );
+  assertApprox(
+    trad.reduce((s, p) => s + p.amount, 0), 2000, 0.01,
+    'Traditional withdrawal at 50 still penalized 10% on full amount',
+  );
+
+  // End-to-end via the withdrawal engine: an early retiree drawing Roth with limited
+  // basis should incur some penalty on the earnings portion.
+  const rothAccount: Account = {
+    id: 'roth', name: 'Roth IRA', type: 'roth_ira',
+    balance: 400000, annualContribution: 0, contributionGrowthRate: 0, returnRate: 0.05,
+    rothContributions: 100000, // only $100k is basis; rest is earnings
+    withdrawalRules: { startAge: 50 },
+  };
+  const profile: Profile = {
+    country: 'US', currentAge: 50, retirementAge: 50, lifeExpectancy: 80,
+    region: 'TX', filingStatus: 'single', stateTaxRate: 0,
+  };
+  const assumptions: Assumptions = {
+    inflationRate: 0, safeWithdrawalRate: 0.08, retirementReturnRate: 0,
+  };
+  const accum = calculateAccumulation([rothAccount], profile, usConfig);
+  const result = calculateWithdrawals([rothAccount], profile, assumptions, accum, usConfig);
+  const earlyPenaltyYears = result.yearlyWithdrawals.filter(
+    (y) => y.age < 59 && y.totalPenalties > 0,
+  );
+  assert(earlyPenaltyYears.length > 0,
+    'Roth with limited basis incurs penalties on earnings during early-retirement years');
+  const lateYear = result.yearlyWithdrawals.find((y) => y.age >= 60);
+  if (lateYear) {
+    assertApprox(lateYear.totalPenalties, 0, 0.01, 'No Roth penalties at/after age 60');
+  }
+}
+
 function runAllTests(): void {
   console.log('\n' + '🧪 RETIREMENT CALCULATOR MATH TESTS '.padEnd(60, '='));
   console.log('Running comprehensive tests on all calculations...\n');
@@ -2148,6 +2230,7 @@ function runAllTests(): void {
   testRothConversionLadder();
   testACA();
   testSSClaiming();
+  testRothBasisTracking();
 
   console.log('\n' + '='.repeat(60));
   console.log('TEST SUMMARY');
