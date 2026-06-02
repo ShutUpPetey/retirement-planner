@@ -280,7 +280,7 @@ Low. New field is optional. Existing localStorage state loads without change.
 ---
 
 ### 13. HSA non-medical penalty fix · Effort: S · Data & scope
-- [ ] **Done**
+- [x] **Done**
 
 **What it does**
 HSA withdrawals before age 65 for non-medical expenses face a 20% penalty + income tax. Currently modeled as penalty-free. Adds accuracy for users who might tap HSA early for non-medical use.
