@@ -12,6 +12,7 @@ import { baristaFireNumber } from '../utils/fire';
 import { calculateRothConversionLadder } from '../utils/rothConversion';
 import { calculateACA, acaApplicablePercentage } from '../utils/aca';
 import { federalPovertyLevel } from '../data/fpl';
+import { calculateSSClaiming, ssBenefitFactor } from '../utils/socialSecurity';
 import { calculateIncomeStreamBenefits } from '../utils/incomeStreams';
 import {
   calculateFederalIncomeTax,
@@ -2059,6 +2060,66 @@ function testACA(): void {
   assert(!ca.relevant, 'Not relevant for non-US profiles');
 }
 
+function testSSClaiming(): void {
+  section('SOCIAL SECURITY CLAIMING OPTIMIZER');
+
+  // SSA actuarial factors (FRA 67):
+  // Age 62 = 60 months early = 36*(5/9%) + 24*(5/12%) = 20% + 10% = 30% cut => 0.70
+  assertApprox(ssBenefitFactor(62), 0.70, 0.0001, 'Claim at 62 = 70% of PIA');
+  assertApprox(ssBenefitFactor(67), 1.0, 0.0001, 'Claim at FRA 67 = 100% of PIA');
+  // Age 70 = 36 months delayed * (2/3%) = 24% => 1.24
+  assertApprox(ssBenefitFactor(70), 1.24, 0.0001, 'Claim at 70 = 124% of PIA');
+  // Age 65 = 24 months early * (5/9%) = 13.333% cut => 0.8667
+  assertApprox(ssBenefitFactor(65), 1 - 24 * (5 / 9 / 100), 0.0001, 'Claim at 65 ≈ 86.67% of PIA');
+
+  // Single filer with an SS stream entered at FRA (so PIA == entered amount).
+  const profile: Profile = {
+    country: 'US', currentAge: 60, retirementAge: 62, lifeExpectancy: 90,
+    region: 'TX', filingStatus: 'single', stateTaxRate: 0,
+  };
+  const ssAtFra: IncomeStream[] = [
+    { id: 'ss', name: 'Social Security', monthlyAmount: 2000, startAge: 67, taxTreatment: 'social_security' },
+  ];
+
+  const a = calculateSSClaiming(profile, ssAtFra);
+  assert(a.relevant, 'Relevant for US filer with an SS stream');
+  assertApprox(a.fraMonthlyBenefit, 2000, 0.01, 'FRA monthly benefit derived as $2,000 (stream entered at FRA)');
+
+  const opt62 = a.options.find(o => o.claimAge === 62)!;
+  const opt67 = a.options.find(o => o.claimAge === 67)!;
+  const opt70 = a.options.find(o => o.claimAge === 70)!;
+  assertApprox(opt62.monthlyBenefit, 1400, 0.01, 'Age 62 monthly = $1,400 (70% of $2,000)');
+  assertApprox(opt67.monthlyBenefit, 2000, 0.01, 'Age 67 monthly = $2,000');
+  assertApprox(opt70.monthlyBenefit, 2480, 0.01, 'Age 70 monthly = $2,480 (124% of $2,000)');
+
+  // No spousal benefit for a single filer.
+  assertApprox(opt67.spousalMonthly, 0, 0.01, 'No spousal benefit when filing single');
+
+  // Classic 62-vs-FRA breakeven lands around age 78-79.
+  assert(a.breakeven62vsFra !== null && a.breakeven62vsFra >= 77 && a.breakeven62vsFra <= 80,
+    `62-vs-FRA breakeven is ~78-79 (got ${a.breakeven62vsFra})`);
+  // FRA-vs-70 breakeven lands around age 82-83.
+  assert(a.breakevenFraVs70 !== null && a.breakevenFraVs70 >= 81 && a.breakevenFraVs70 <= 84,
+    `FRA-vs-70 breakeven is ~82-83 (got ${a.breakevenFraVs70})`);
+
+  // At life expectancy 90, delaying to 70 collects the most.
+  assert(a.recommendedAge === 70, `Long life expectancy (90) favors claiming at 70 (got ${a.recommendedAge})`);
+
+  // Short life expectancy flips the recommendation toward claiming early.
+  const shortLife = calculateSSClaiming({ ...profile, lifeExpectancy: 74 }, ssAtFra);
+  assert(shortLife.recommendedAge === 62, `Short life expectancy (74) favors claiming at 62 (got ${shortLife.recommendedAge})`);
+
+  // MFJ adds a spousal benefit (~50% of PIA at FRA).
+  const mfj = calculateSSClaiming({ ...profile, filingStatus: 'married_filing_jointly' }, ssAtFra);
+  assert(mfj.includesSpousal, 'MFJ flagged as including spousal');
+  assertApprox(mfj.options.find(o => o.claimAge === 67)!.spousalMonthly, 1000, 0.01,
+    'MFJ spousal at FRA = $1,000 (50% of $2,000 PIA)');
+
+  // Non-US and no-stream are not relevant.
+  assert(!calculateSSClaiming({ ...profile, country: 'CA' }, ssAtFra).relevant, 'Not relevant for non-US');
+  assert(!calculateSSClaiming(profile, []).relevant, 'Not relevant with no SS stream');
+}
+
 function runAllTests(): void {
   console.log('\n' + '🧪 RETIREMENT CALCULATOR MATH TESTS '.padEnd(60, '='));
   console.log('Running comprehensive tests on all calculations...\n');
@@ -2086,6 +2147,7 @@ function runAllTests(): void {
   testBaristaBridge();
   testRothConversionLadder();
   testACA();
+  testSSClaiming();
 
   console.log('\n' + '='.repeat(60));
   console.log('TEST SUMMARY');

@@ -31,6 +31,7 @@ import {
 import { getRothVsTraditionalAdvice } from "../utils/rothVsTraditional";
 import { calculateRothConversionLadder } from "../utils/rothConversion";
 import { calculateACA } from "../utils/aca";
+import { calculateSSClaiming } from "../utils/socialSecurity";
 import { FIRE_STRATEGY_INFO } from "../utils/fireStrategyInfo";
 import { NumberInput } from "./NumberInput";
 import { Tooltip } from "./Tooltip";
@@ -98,6 +99,7 @@ export function FirePanel({
     accumulation,
   );
   const aca = calculateACA(profile, assumptions, incomeStreams, rothLadder);
+  const ssClaiming = calculateSSClaiming(profile, incomeStreams);
 
   const fmt = (n: number) =>
     new Intl.NumberFormat(undefined, {
@@ -746,6 +748,163 @@ export function FirePanel({
           </p>
         )}
       </div>
+
+      {/* Social Security claiming optimizer */}
+      {ssClaiming.relevant && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+            When To Claim Social Security
+          </h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Claiming earlier means smaller checks for more years; waiting means bigger
+            checks for fewer. Based on a full-retirement-age (age {ssClaiming.fra}) benefit
+            of {fmt(ssClaiming.fraMonthlyBenefit)}/mo
+            {ssClaiming.includesSpousal ? " plus a 50% spousal benefit" : ""}, here's how
+            the three standard claim ages compare in total lifetime benefits (today's
+            dollars).
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+            {ssClaiming.options.map((o) => {
+              const isBest = o.claimAge === ssClaiming.recommendedAge;
+              return (
+                <div
+                  key={o.claimAge}
+                  className={`rounded-md p-3 border ${
+                    isBest
+                      ? "border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20"
+                      : "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/40"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">{o.label}</div>
+                    {isBest && (
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300">
+                        Most by age {ssClaiming.lifeExpectancy}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xl font-semibold text-gray-900 dark:text-white mt-1">
+                    {fmt(o.monthlyBenefit + o.spousalMonthly)}/mo
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    {Math.round(o.pctOfFra * 100)}% of FRA
+                    {o.spousalMonthly > 0
+                      ? ` · incl. ${fmt(o.spousalMonthly)} spousal`
+                      : ""}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Lifetime: {fmt(o.cumulativeByLifeExpectancy)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{ width: "100%", height: 280 }}>
+            <ResponsiveContainer>
+              <LineChart
+                data={ssClaiming.curve}
+                margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+                <XAxis
+                  dataKey="age"
+                  stroke={axisColor}
+                  tick={{ fill: axisColor, fontSize: 12 }}
+                  label={{
+                    value: "Age",
+                    position: "insideBottom",
+                    offset: -2,
+                    fill: axisColor,
+                    fontSize: 12,
+                  }}
+                />
+                <YAxis
+                  stroke={axisColor}
+                  tick={{ fill: axisColor, fontSize: 12 }}
+                  tickFormatter={compactCurrency}
+                  width={64}
+                />
+                <RTooltip
+                  formatter={(value, name) => [fmt(Number(value)), String(name)]}
+                  labelFormatter={(label) => `Age ${label}`}
+                  contentStyle={{
+                    backgroundColor: isDarkMode ? "#1f2937" : "#ffffff",
+                    border: `1px solid ${gridColor}`,
+                    borderRadius: 8,
+                    color: isDarkMode ? "#f9fafb" : "#111827",
+                  }}
+                />
+                {ssClaiming.breakeven62vsFra !== null && (
+                  <ReferenceLine
+                    x={ssClaiming.breakeven62vsFra}
+                    stroke={axisColor}
+                    strokeDasharray="2 4"
+                    label={{
+                      value: `62 vs FRA: ${ssClaiming.breakeven62vsFra}`,
+                      position: "top",
+                      fill: axisColor,
+                      fontSize: 10,
+                    }}
+                  />
+                )}
+                {ssClaiming.breakevenFraVs70 !== null && (
+                  <ReferenceLine
+                    x={ssClaiming.breakevenFraVs70}
+                    stroke={axisColor}
+                    strokeDasharray="2 4"
+                    label={{
+                      value: `FRA vs 70: ${ssClaiming.breakevenFraVs70}`,
+                      position: "top",
+                      fill: axisColor,
+                      fontSize: 10,
+                    }}
+                  />
+                )}
+                <Line type="monotone" dataKey="claim62" name="Claim at 62" stroke="#d97706" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="claimFra" name={`Claim at ${ssClaiming.fra}`} stroke="#2563eb" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="claim70" name="Claim at 70" stroke="#059669" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-0.5" style={{ backgroundColor: "#d97706" }} />Claim at 62</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-0.5" style={{ backgroundColor: "#2563eb" }} />Claim at {ssClaiming.fra}</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-0.5" style={{ backgroundColor: "#059669" }} />Claim at 70</span>
+          </div>
+
+          <div className="mt-3 text-sm text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/40 rounded-md p-3">
+            {ssClaiming.breakeven62vsFra !== null ? (
+              <>
+                Claiming at FRA beats claiming at 62 once you live past{" "}
+                <span className="font-medium">age {ssClaiming.breakeven62vsFra}</span>
+                {ssClaiming.breakevenFraVs70 !== null && (
+                  <>
+                    ; waiting to 70 pulls ahead of FRA after{" "}
+                    <span className="font-medium">age {ssClaiming.breakevenFraVs70}</span>
+                  </>
+                )}
+                . On your life expectancy of {ssClaiming.lifeExpectancy}, claiming at{" "}
+                <span className="font-medium">age {ssClaiming.recommendedAge}</span> collects
+                the most.
+              </>
+            ) : (
+              <>On your life expectancy of {ssClaiming.lifeExpectancy}, claiming at age{" "}
+                {ssClaiming.recommendedAge} collects the most.</>
+            )}
+          </div>
+
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">
+            Uses SSA actuarial adjustments for those born 1960+ (FRA 67): 62 pays 70% of
+            your full benefit, 70 pays 124%. Compared in today's dollars since all options
+            share the same COLA.
+            {ssClaiming.includesSpousal && " Spousal benefit is modeled simply as 50% of your full benefit and ignores your spouse's own earned benefit."}{" "}
+            Educational estimate — get your personalized figures at ssa.gov.
+          </p>
+        </div>
+      )}
 
       {/* SWR sustainability */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">

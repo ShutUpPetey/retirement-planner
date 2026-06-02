@@ -198,6 +198,34 @@ export interface SocialSecurityCoverage {
   residualPortfolio: number;    // residualDraw / SWR (portfolio needed once SS is on)
 }
 
+// ---- Social Security claiming optimizer (US only) ----
+
+export interface SSClaimingOption {
+  claimAge: number;             // 62, FRA, or 70
+  label: string;                // e.g. "Age 62 (early)"
+  monthlyBenefit: number;       // benefit at this claim age (today's dollars)
+  annualBenefit: number;        // monthlyBenefit * 12
+  pctOfFra: number;             // benefit as a fraction of the FRA benefit (e.g. 0.70, 1.24)
+  spousalMonthly: number;       // spousal benefit added for MFJ (0 otherwise)
+  cumulativeByLifeExpectancy: number; // total household benefit collected through life expectancy
+}
+
+export interface SSClaimingAnalysis {
+  relevant: boolean;            // US, with an FRA benefit provided
+  fra: number;                  // full retirement age used (67 for born 1960+)
+  fraMonthlyBenefit: number;    // the input PIA / FRA monthly benefit
+  lifeExpectancy: number;
+  includesSpousal: boolean;     // true when MFJ spousal benefit is modeled
+  options: SSClaimingOption[];  // one per claim age (62, FRA, 70)
+  /** Crossover age where the later claim's cumulative total overtakes the earlier one. */
+  breakeven62vsFra: number | null;
+  breakevenFraVs70: number | null;
+  breakeven62vs70: number | null;
+  recommendedAge: number;       // option with the highest cumulative total at life expectancy
+  /** Per-age cumulative totals for charting: age -> { age, claim62, claimFra, claim70 } */
+  curve: { age: number; claim62: number; claimFra: number; claim70: number }[];
+}
+
 export type SwrLevel = 'conservative' | 'moderate' | 'aggressive' | 'very_aggressive';
 
 export interface SwrAssessment {
