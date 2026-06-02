@@ -260,7 +260,7 @@ Low architectural risk — the withdrawal loop is already year-by-year. Main com
 ---
 
 ### 12. Roth basis tracking · Effort: S · Data & scope
-- [ ] **Done**
+- [x] **Done**
 
 **What it does**
 Track the running sum of Roth contributions separately from earnings. Contributions can be withdrawn penalty-free at any age; only earnings face the 10% penalty before 59.5. Currently all Roth is treated identically.
