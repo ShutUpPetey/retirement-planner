@@ -192,7 +192,7 @@ Optimization involves projecting future bracket space, which requires estimating
 ---
 
 ### 9. Social Security claiming optimizer · Effort: M · Decision tools
-- [ ] **Done**
+- [x] **Done**
 
 **What it does**
 Breakeven analysis for claiming at 62, FRA (67 for those born after 1960), or 70. Displays cumulative benefit curves, crossover ages, and "what age do you need to live to for 70 to win?"
