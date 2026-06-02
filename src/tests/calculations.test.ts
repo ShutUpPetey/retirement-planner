@@ -2202,6 +2202,80 @@ function testRothBasisTracking(): void {
   }
 }
 
+function testHsaNonMedicalPenalty(): void {
+  section('HSA NON-MEDICAL PENALTY');
+
+  // Default (medical): no penalty even before 65.
+  const medical = calculatePenalties(
+    [{ accountId: 'h', accountName: 'HSA', accountType: 'hsa', amount: 10000 }],
+    50, usConfig,
+  );
+  assertApprox(
+    medical.reduce((s, p) => s + p.amount, 0), 0, 0.01,
+    'HSA medical (default) withdrawal at 50 = $0 penalty',
+  );
+
+  // Non-medical before 65: 20% penalty.
+  const nonMedical = calculatePenalties(
+    [{ accountId: 'h', accountName: 'HSA', accountType: 'hsa', amount: 10000, hsaNonMedical: true }],
+    50, usConfig,
+  );
+  assertApprox(
+    nonMedical.reduce((s, p) => s + p.amount, 0), 2000, 0.01,
+    'HSA non-medical at 50 = 20% penalty ($2,000)',
+  );
+
+  // Non-medical at 64 (still before 65): penalized.
+  const at64 = calculatePenalties(
+    [{ accountId: 'h', accountName: 'HSA', accountType: 'hsa', amount: 10000, hsaNonMedical: true }],
+    64, usConfig,
+  );
+  assertApprox(
+    at64.reduce((s, p) => s + p.amount, 0), 2000, 0.01,
+    'HSA non-medical at 64 still penalized 20% ($2,000)',
+  );
+
+  // Non-medical at 65: no penalty (HSA acts like a traditional IRA from 65).
+  const at65 = calculatePenalties(
+    [{ accountId: 'h', accountName: 'HSA', accountType: 'hsa', amount: 10000, hsaNonMedical: true }],
+    65, usConfig,
+  );
+  assertApprox(
+    at65.reduce((s, p) => s + p.amount, 0), 0, 0.01,
+    'HSA non-medical at 65 = $0 penalty',
+  );
+
+  // End-to-end: early retiree drawing a non-medical HSA before 65 incurs penalties.
+  const hsaAccount: Account = {
+    id: 'hsa', name: 'HSA', type: 'hsa',
+    balance: 200000, annualContribution: 0, contributionGrowthRate: 0, returnRate: 0,
+    hsaNonMedical: true,
+    withdrawalRules: { startAge: 55 },
+  };
+  const profile: Profile = {
+    country: 'US', currentAge: 55, retirementAge: 55, lifeExpectancy: 80,
+    region: 'TX', filingStatus: 'single', stateTaxRate: 0,
+  };
+  const assumptions: Assumptions = {
+    inflationRate: 0, safeWithdrawalRate: 0.08, retirementReturnRate: 0,
+  };
+  const accum = calculateAccumulation([hsaAccount], profile, usConfig);
+  const result = calculateWithdrawals([hsaAccount], profile, assumptions, accum, usConfig);
+  const earlyPenalties = result.yearlyWithdrawals.filter((y) => y.age < 65 && y.totalPenalties > 0);
+  assert(earlyPenalties.length > 0, 'Non-medical HSA incurs penalties before 65');
+  const at65Plus = result.yearlyWithdrawals.find((y) => y.age >= 65);
+  if (at65Plus) {
+    assertApprox(at65Plus.totalPenalties, 0, 0.01, 'No HSA penalty at/after 65');
+  }
+
+  // Medical HSA (default) end-to-end: no penalties at any age.
+  const medicalAccount: Account = { ...hsaAccount, hsaNonMedical: false };
+  const accum2 = calculateAccumulation([medicalAccount], profile, usConfig);
+  const result2 = calculateWithdrawals([medicalAccount], profile, assumptions, accum2, usConfig);
+  const anyPenalty = result2.yearlyWithdrawals.some((y) => y.totalPenalties > 0);
+  assert(!anyPenalty, 'Medical HSA (default) incurs no penalties at any age');
+}
+
 function runAllTests(): void {
   console.log('\n' + '🧪 RETIREMENT CALCULATOR MATH TESTS '.padEnd(60, '='));
   console.log('Running comprehensive tests on all calculations...\n');
@@ -2231,6 +2305,7 @@ function runAllTests(): void {
   testACA();
   testSSClaiming();
   testRothBasisTracking();
+  testHsaNonMedicalPenalty();
 
   console.log('\n' + '='.repeat(60));
   console.log('TEST SUMMARY');

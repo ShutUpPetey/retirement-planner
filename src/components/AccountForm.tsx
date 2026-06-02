@@ -122,6 +122,9 @@ export function AccountForm({ account, profile, onSave, onCancel }: AccountFormP
   // Roth basis tracking: optional cost-basis input for Roth accounts (US).
   const showRothBasis = getTaxTreatment(formData.type) === 'roth';
 
+  // HSA non-medical toggle: only for HSA accounts.
+  const showHsaToggle = getTaxTreatment(formData.type) === 'hsa';
+
   // IRS / CRA contribution limit for the current account type (numeric only)
   const irsLimit = useMemo(() => {
     const limits = fullCountryConfig.getContributionLimits();
@@ -400,6 +403,28 @@ export function AccountForm({ account, profile, onSave, onCancel }: AccountFormP
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
             Optional. Used to penalize only the earnings portion of early Roth withdrawals.
           </p>
+        </div>
+      )}
+
+      {showHsaToggle && (
+        <div className="border-t border-gray-200 dark:border-gray-600 pt-4 mt-4">
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!!formData.hsaNonMedical}
+              onChange={(e) =>
+                setFormData((prev) => ({ ...prev, hsaNonMedical: e.target.checked }))
+              }
+              className="mt-0.5"
+            />
+            <span className="text-sm text-gray-700 dark:text-gray-300">
+              Will use for non-medical expenses before 65
+              <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Off (default): HSA assumed for medical use — penalty-free. On: withdrawals
+                before age 65 incur a 20% penalty plus income tax.
+              </span>
+            </span>
+          </label>
         </div>
       )}
 

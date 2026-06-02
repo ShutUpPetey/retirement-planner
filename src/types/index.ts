@@ -82,6 +82,10 @@ export interface Account {
   // contributions are withdrawn first and penalty-free at any age; only the earnings
   // portion withdrawn before 59.5 is penalized. Undefined => legacy behavior (all penalty-free).
   rothContributions?: number;
+  // HSA: when true, withdrawals before age 65 are treated as non-medical and incur a
+  // 20% penalty (plus ordinary income tax). Default/undefined => medical use (penalty-free),
+  // the conservative assumption matching most HSA savers' intent.
+  hsaNonMedical?: boolean;
   withdrawalRules?: AccountWithdrawalRules;  // Optional for backwards compatibility
 }
 

@@ -432,6 +432,7 @@ function performTaxOptimizedWithdrawal(
       accountType: acc.type,
       amount,
       penalizableAmount,
+      hsaNonMedical: account.hsaNonMedical,
     });
   };
 

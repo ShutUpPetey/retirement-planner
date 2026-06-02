@@ -15,7 +15,17 @@ export interface AccountWithdrawal {
    * When undefined, the full `amount` is treated as penalizable (legacy behavior).
    */
   penalizableAmount?: number;
+  /**
+   * HSA only: when true, this withdrawal is non-medical and incurs a 20% penalty before
+   * age 65 (US). Undefined/false => medical use, penalty-free (the default assumption).
+   */
+  hsaNonMedical?: boolean;
 }
+
+// HSA non-medical early-withdrawal rules (US). Distinct from the 10%/59.5 rule for
+// traditional accounts: 20% penalty on non-medical withdrawals before age 65.
+const HSA_PENALTY_AGE = 65;
+const HSA_PENALTY_RATE = 0.20;
 
 /**
  * Calculate early withdrawal penalties for a list of withdrawals
@@ -61,6 +71,25 @@ export function calculatePenalties(
       currentAge < penaltyInfo.penaltyAge
     ) {
       const penaltyAmount = withdrawal.penalizableAmount * penaltyInfo.penaltyRate;
+      if (penaltyAmount > 0) {
+        penalties.push({
+          amount: penaltyAmount,
+          accountId: withdrawal.accountId,
+          accountName: withdrawal.accountName,
+        });
+      }
+      continue;
+    }
+
+    // Case 3: HSA non-medical withdrawal before 65 — a distinct 20% penalty (US).
+    // Medical HSA use (the default) is penalty-free, so this only fires when the
+    // account is flagged non-medical.
+    if (
+      withdrawal.accountType === 'hsa' &&
+      withdrawal.hsaNonMedical &&
+      currentAge < HSA_PENALTY_AGE
+    ) {
+      const penaltyAmount = withdrawal.amount * HSA_PENALTY_RATE;
       if (penaltyAmount > 0) {
         penalties.push({
           amount: penaltyAmount,
